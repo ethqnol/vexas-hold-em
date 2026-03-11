@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // go backend bypasses these entirely — rules are for web/mobile SDKs only
+
+    // users can read their own data, no direct writes (backend handles trading)
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false; // backend only
+
+      // own portfolio
+      match /positions/{positionId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false; // backend only
+      }
+    }
+
+    // comps + markets are public read
+    match /competitions/{competitionId} {
+      allow read: if true;
+      allow write: if false; // backend/admin only
+
+      match /markets/{marketId} {
+        allow read: if true;
+        allow write: if false; // backend only
+      }
+    }
+
+    // deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
