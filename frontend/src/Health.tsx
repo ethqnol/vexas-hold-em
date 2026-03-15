@@ -33,14 +33,14 @@ function Health() {
 
     useEffect(() => {
         checkHealth();
-        const interval = setInterval(checkHealth, 30000); // Check every 30s
+        const interval = setInterval(checkHealth, 30000); // check every 30s
         return () => clearInterval(interval);
     }, []);
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-gray-100 flex flex-col pt-20 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto w-full space-y-8">
-                {/* Header */}
+                {/* header */}
                 <div className="flex flex-col items-center text-center space-y-4">
                     <div className="p-3 bg-gray-900 rounded-2xl border border-gray-800 shadow-xl">
                         <Activity className="w-8 h-8 text-blue-500" />
@@ -51,7 +51,7 @@ function Health() {
                     </p>
                 </div>
 
-                {/* Global Status Banner */}
+                {/* global status banner */}
                 <div
                     className={cn(
                         "p-6 rounded-2xl border flex items-center justify-between transition-all duration-500",
@@ -87,9 +87,9 @@ function Health() {
                     </button>
                 </div>
 
-                {/* Component Grid */}
+                {/* comp grid */}
                 <div className="grid gap-4 sm:grid-cols-2">
-                    {/* API Server Card */}
+                    {/* api server card */}
                     <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between group hover:border-gray-700 transition-colors">
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex items-center gap-3">
@@ -124,7 +124,7 @@ function Health() {
                                 </div>
                             </div>
 
-                            {/* Fake Latency Sparkline */}
+                            {/* fake latency sparkline */}
                             <div className="flex items-end gap-1 h-10">
                                 {[40, 60, 45, 80, 55, 45, latency ?? 40].map((h, i) => (
                                     <div
@@ -141,7 +141,7 @@ function Health() {
                         </div>
                     </div>
 
-                    {/* Database Card */}
+                    {/* db card */}
                     <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between group hover:border-gray-700 transition-colors">
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex items-center gap-3">
@@ -174,7 +174,7 @@ function Health() {
                                     </span>
                                 </div>
                             </div>
-                            {/* Fixed Height Fake Sparkline */}
+                            {/* fixed height fake sparkline */}
                             <div className="flex items-end gap-1 h-10">
                                 {[100, 100, 100, 100, 100, 100, 100].map((h, i) => (
                                     <div
@@ -192,7 +192,7 @@ function Health() {
                     </div>
                 </div>
 
-                {/* Footer */}
+                {/* footer */}
                 <div className="text-center text-sm text-gray-600">
                     Last updated: {lastCheck ? lastCheck.toLocaleTimeString() : 'Never'}
                 </div>

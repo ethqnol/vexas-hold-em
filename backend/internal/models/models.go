@@ -9,8 +9,10 @@ type User struct {
 
 // user's held shares in a team
 type Position struct {
-	YesShares float64 `firestore:"yesShares"`
-	NoShares  float64 `firestore:"noShares"`
+	CompetitionID string  `firestore:"competitionId,omitempty"`
+	TeamName      string  `firestore:"teamName,omitempty"`
+	YesShares     float64 `firestore:"yesShares"`
+	NoShares      float64 `firestore:"noShares"`
 }
 
 // entire event
@@ -19,23 +21,24 @@ type Competition struct {
 	WinningTeamID string `firestore:"winningTeamId,omitempty"`
 }
 
-// AMM pool for a team in a comp
+// amm pool for a team in a comp
 type Market struct {
 	TeamID       string  `firestore:"teamId" json:"teamId"`
 	TeamName     string  `firestore:"teamName" json:"teamName"`
 	Division     string  `firestore:"division" json:"division"`
 	Organization string  `firestore:"organization" json:"organization"`
 	Location     string  `firestore:"location" json:"location"`
-	YesPool      float64 `firestore:"yesPool" json:"yesPool"` // AMM liquidity
-	NoPool       float64 `firestore:"noPool" json:"noPool"`   // AMM liquidity
+	YesPool      float64 `firestore:"yesPool" json:"yesPool"` // amm liquidity
+	NoPool       float64 `firestore:"noPool" json:"noPool"`   // amm liquidity
 }
 
 // ledger entry
 type Transaction struct {
-	Timestamp    int64  `firestore:"timestamp"`
-	UserID       string `firestore:"userId"`
-	TeamID       string `firestore:"teamId"`
-	TradeType    string `firestore:"tradeType"` // "YES", "NO"
-	AmountSpent  string `firestore:"amountSpent"`
-	SharesBought string `firestore:"sharesBought"`
+	Timestamp    int64   `firestore:"timestamp"`
+	UserID       string  `firestore:"userId"`
+	TeamID       string  `firestore:"teamId"`
+	TradeType    string  `firestore:"tradeType"` // "YES", "NO", "SELL_YES", "SELL_NO"
+	AmountSpent  float64 `firestore:"amountSpent"`
+	SharesBought float64 `firestore:"sharesBought"`
+	YesOdds      float64 `firestore:"yesOdds"` // implied prob at time of trade
 }

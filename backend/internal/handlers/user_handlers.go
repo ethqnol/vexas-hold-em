@@ -9,7 +9,7 @@ import (
 	"github.com/vexas-hold-em/backend/internal/models"
 )
 
-// retrieves info and balance
+// gets user info & bal
 func GetUserProfile(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -37,7 +37,7 @@ func GetUserProfile(c *fiber.Ctx) error {
 	})
 }
 
-// creates new User doc if user doesnt already exist
+// creates new user doc if user doesnt exist
 func SyncUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -46,7 +46,7 @@ func SyncUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database not initialized"})
 	}
 
-	// Parse body for email/display name (from Firebase Auth)
+	// parse body for email/disp name (from fb auth)
 	var req struct {
 		Email       string `json:"email"`
 		DisplayName string `json:"displayName"`
@@ -85,7 +85,7 @@ func SyncUser(c *fiber.Ctx) error {
 	})
 }
 
-// retrieves active positions
+// gets active positions
 func GetUserPortfolio(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -101,11 +101,18 @@ func GetUserPortfolio(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch portfolio"})
 	}
 
-	portfolio := make(map[string]models.Position)
+	portfolio := make(map[string]map[string]models.Position)
 	for _, doc := range docs {
 		var pos models.Position
 		if err := doc.DataTo(&pos); err == nil {
-			portfolio[doc.Ref.ID] = pos
+			compID := pos.CompetitionID
+			if compID == "" {
+				compID = "unknown_competition"
+			}
+			if portfolio[compID] == nil {
+				portfolio[compID] = make(map[string]models.Position)
+			}
+			portfolio[compID][doc.Ref.ID] = pos
 		} else {
 			log.Printf("GetUserPortfolio: Failed to parse position document %s: %v\n", doc.Ref.ID, err)
 		}

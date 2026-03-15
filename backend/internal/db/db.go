@@ -13,8 +13,8 @@ var Client *firestore.Client
 func InitFirestore() {
 	ctx := context.Background()
 
-	// Connects automatically using GOOGLE_APPLICATION_CREDENTIALS
-	// in development, or Application Default Credentials in production
+	// connects automatically using google_application_credentials
+	// in dev, or app default credentials in prod
 	conf := &firebase.Config{ProjectID: "vexasholdem"}
 	app, err := firebase.NewApp(ctx, conf)
 	if err != nil {

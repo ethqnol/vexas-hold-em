@@ -3,10 +3,14 @@ import { Routes, Route, Link } from 'react-router-dom';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { auth } from './firebase';
-import { LogIn, LogOut, Loader2, ShieldAlert } from 'lucide-react';
+import { LogIn, LogOut, Loader2, ShieldAlert, Wallet } from 'lucide-react';
 import Health from './Health';
 import Admin from './Admin';
 import Competition from './Competition';
+import Portfolio from './Portfolio';
+import Casino from './Casino';
+import Roulette from './Roulette';
+import Slots from './Slots';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -40,7 +44,7 @@ function App() {
   };
 
   useEffect(() => {
-    // Fetch all competitions on load
+    // fetch all comps on load
     const fetchCompetitions = async () => {
       try {
         const res = await fetch('http://localhost:8080/api/v1/competitions');
@@ -60,7 +64,7 @@ function App() {
       setLoading(false);
 
       if (currentUser) {
-        // Automatically sync/create user in Firestore DB
+        // auto sync/create user in db
         try {
           await fetch(`http://localhost:8080/api/v1/users/${currentUser.uid}/sync`, {
             method: 'POST',
@@ -139,6 +143,12 @@ function App() {
                         Admin Panel
                       </Link>
                     )}
+                    <Link
+                      to="/casino"
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-lg transition-colors border border-purple-500/20"
+                    >
+                      Casino
+                    </Link>
                     <button
                       onClick={handleLogout}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-300 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors border border-gray-700 hover:border-gray-600"
@@ -217,71 +227,20 @@ function App() {
                 </div>
 
                 <div className="space-y-6">
-                  {/* Portfolio will go here */}
-                  <div className="p-8 rounded-2xl bg-gray-900 border border-gray-800 shadow-xl">
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-bold flex items-center gap-2 text-white">
-                        Your Portfolio
-                      </h2>
+                  <div className="p-8 rounded-2xl bg-gray-900 border border-gray-800 shadow-xl flex flex-col items-center justify-center text-center h-full min-h-[300px]">
+                    <div className="p-4 bg-blue-500/10 rounded-full mb-6">
+                      <Wallet className="w-8 h-8 text-blue-500" />
                     </div>
-
-                    {profile && (
-                      <div className="mb-6 p-6 bg-gray-950 rounded-xl border border-gray-800 shadow-inner">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <div className="text-sm font-semibold text-gray-400">Available Balance</div>
-                            <div className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">
-                              Secure High-yield Investment Token
-                            </div>
-                          </div>
-                          <div className="bg-green-500/10 px-2 py-1 rounded text-[10px] font-bold text-green-400 border border-green-500/20">
-                            S.H.I.T.
-                          </div>
-                        </div>
-                        <div className="text-4xl font-mono text-green-400 mt-2 font-bold tracking-tight drop-shadow-sm">
-                          {profile.Balance?.toFixed(2) || "0.00"}
-                        </div>
-                      </div>
-                    )}
-
-                    {portfolio && Object.keys(portfolio).length > 0 ? (
-                      <div className="space-y-4">
-                        <h3 className="text-sm text-gray-400 font-medium uppercase tracking-wider mb-2">Active Positions</h3>
-                        {Object.entries(portfolio).map(([teamId, pos]: [string, any]) => {
-                          const hasYes = pos.YesShares > 0;
-                          const hasNo = pos.NoShares > 0;
-
-                          if (!hasYes && !hasNo) return null;
-
-                          return (
-                            <div key={teamId} className="flex flex-col gap-3 p-5 bg-gray-950/50 hover:bg-gray-800 transition-all rounded-xl border border-gray-800 hover:border-gray-600 shadow-sm">
-                              <div className="flex justify-between items-center border-b border-gray-800/50 pb-2 mb-1">
-                                <span className="font-bold text-gray-100 text-lg tracking-wide">Team {teamId}</span>
-                              </div>
-                              <div className="flex gap-3">
-                                {hasYes && (
-                                  <div className="flex-1 flex flex-col items-center justify-center p-2 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20">
-                                    <span className="font-bold text-[10px] uppercase tracking-wider opacity-80 mb-1">YES Shares</span>
-                                    <span className="font-mono text-xl font-bold">{pos.YesShares?.toFixed(1)}</span>
-                                  </div>
-                                )}
-                                {hasNo && (
-                                  <div className="flex-1 flex flex-col items-center justify-center p-2 bg-red-500/10 text-red-400 rounded-lg border border-red-500/20">
-                                    <span className="font-bold text-[10px] uppercase tracking-wider opacity-80 mb-1">NO Shares</span>
-                                    <span className="font-mono text-xl font-bold">{pos.NoShares?.toFixed(1)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-center p-6 border border-dashed border-gray-700 rounded-xl">
-                        <p className="text-gray-400">No active positions yet.</p>
-                        <p className="text-sm text-gray-500 mt-2">Trades you make will appear here.</p>
-                      </div>
-                    )}
+                    <h2 className="text-2xl font-bold text-white mb-3">Your Portfolio</h2>
+                    <p className="text-gray-400 mb-8 max-w-xs">
+                      View your active predictions, track your available liquidity, and manage your assets.
+                    </p>
+                    <Link
+                      to="/portfolio"
+                      className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-xl shadow-blue-500/20 hover:scale-[1.02] active:scale-95"
+                    >
+                      Open Portfolio
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -289,6 +248,10 @@ function App() {
           </main>
         </div>
       } />
+      <Route path="/portfolio" element={<Portfolio user={user} profile={profile} portfolio={portfolio} />} />
+      <Route path="/casino" element={<Casino user={user} profile={profile} />} />
+      <Route path="/casino/roulette" element={<Roulette user={user} profile={profile} refreshProfile={() => user && fetchUserProfile(user.uid)} />} />
+      <Route path="/casino/slots" element={<Slots user={user} profile={profile} refreshProfile={() => user && fetchUserProfile(user.uid)} />} />
       <Route path="/competition/:id" element={<Competition />} />
       <Route path="/health" element={<Health />} />
       <Route path="/admin" element={<Admin user={user} />} />

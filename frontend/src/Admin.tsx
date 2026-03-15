@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import type { User } from 'firebase/auth';
 import { Settings, Plus, Power, RefreshCcw, DollarSign } from 'lucide-react';
@@ -14,7 +14,61 @@ function Admin({ user }: AdminProps) {
     const [creating, setCreating] = useState(false);
     const [createMsg, setCreateMsg] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
 
-    // Strict check - only this email is allowed
+    const [manageCompId, setManageCompId] = useState('');
+    const [winningTeams, setWinningTeams] = useState('');
+    const [managing, setManaging] = useState(false);
+    const [manageMsg, setManageMsg] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
+
+    const [comps, setComps] = useState<any[]>([]);
+    const [compsLoading, setCompsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchComps = async () => {
+            try {
+                const res = await fetch('http://localhost:8080/api/v1/competitions');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        setComps(data.competitions || []);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch competitions", e);
+            } finally {
+                setCompsLoading(false);
+            }
+        };
+        fetchComps();
+    }, []);
+
+    const handleManageAction = async (endpoint: string, method: string, body?: any) => {
+        if (!manageCompId) return;
+        setManaging(true);
+        setManageMsg(null);
+        try {
+            const res = await fetch(`http://localhost:8080/api/v1/admin/competitions/${manageCompId}/${endpoint}`, {
+                method,
+                headers: body ? { 'Content-Type': 'application/json' } : undefined,
+                body: body ? JSON.stringify(body) : undefined
+            });
+            const data = await res.json();
+            if (res.ok) {
+                let msg = data.message || "Success";
+                if (data.totalPayoutsDistributed !== undefined) {
+                    msg += ` (Payouts: ${data.totalPayoutsDistributed} VEX)`;
+                }
+                setManageMsg({ text: msg, type: 'success' });
+            } else {
+                setManageMsg({ text: data.error || "Action failed.", type: 'error' });
+            }
+        } catch (e: any) {
+            setManageMsg({ text: "Server error: " + e.message, type: 'error' });
+        } finally {
+            setManaging(false);
+        }
+    };
+
+    // strict check - only this email allowed
     const isAdmin = user?.email === 'drinkfood.exe@gmail.com';
 
     if (!isAdmin) {
@@ -24,7 +78,7 @@ function Admin({ user }: AdminProps) {
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-gray-100 flex flex-col pt-4">
             <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 space-y-8 pb-12">
-                {/* Header */}
+                {/* header */}
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                     <div>
                         <div className="flex items-center gap-3 mb-2">
@@ -59,56 +113,113 @@ function Admin({ user }: AdminProps) {
                 </div>
 
                 {activeTab === 'manage' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {/* Kill Switch Card */}
-                        <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
-                            <div className="mb-6">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <div className="p-2 bg-red-500/10 rounded-lg">
-                                        <Power className="w-5 h-5 text-red-500" />
-                                    </div>
-                                    <h3 className="font-bold text-lg">Kill Switch</h3>
-                                </div>
-                                <p className="text-sm text-gray-400">Instantly halt all trading for an active competition.</p>
+                    <div className="space-y-6">
+                        {/* global mgmt inputs */}
+                        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col md:flex-row gap-6">
+                            <div className="flex-1 space-y-2">
+                                <label className="text-sm font-medium text-gray-300">Target Competition</label>
+                                <select
+                                    value={manageCompId}
+                                    onChange={(e) => setManageCompId(e.target.value)}
+                                    disabled={compsLoading}
+                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all appearance-none"
+                                >
+                                    <option value="" disabled>Select a competition...</option>
+                                    {comps.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.id} ({c.data?.status || 'unknown'})
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
-                            <button className="w-full py-3 px-4 rounded-xl bg-red-950/50 hover:bg-red-900/50 border border-red-900/50 text-red-400 font-semibold transition-colors flex items-center justify-center gap-2">
-                                <Power className="w-4 h-4" />
-                                Pause Trading
-                            </button>
+                            <div className="flex-1 space-y-2">
+                                <label className="text-sm font-medium text-gray-300">Winning Teams (comma separated)</label>
+                                <input
+                                    type="text"
+                                    value={winningTeams}
+                                    onChange={(e) => setWinningTeams(e.target.value)}
+                                    placeholder="e.g. 10102Y, 10102A"
+                                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder:text-gray-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                                />
+                            </div>
                         </div>
 
-                        {/* Resolve Markets Card */}
-                        <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
-                            <div className="mb-6">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <div className="p-2 bg-emerald-500/10 rounded-lg">
-                                        <DollarSign className="w-5 h-5 text-emerald-500" />
-                                    </div>
-                                    <h3 className="font-bold text-lg">Resolve & Payout</h3>
-                                </div>
-                                <p className="text-sm text-gray-400">Trigger the payout engine to distribute balances for a completed event.</p>
+                        {manageMsg && (
+                            <div className={`p-4 rounded-xl border ${manageMsg.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+                                {manageMsg.text}
                             </div>
-                            <button className="w-full py-3 px-4 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/50 border border-emerald-900/50 text-emerald-400 font-semibold transition-colors flex items-center justify-center gap-2">
-                                <DollarSign className="w-4 h-4" />
-                                Execute Payouts
-                            </button>
-                        </div>
+                        )}
 
-                        {/* Reset Competition Card */}
-                        <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
-                            <div className="mb-6">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <div className="p-2 bg-amber-500/10 rounded-lg">
-                                        <RefreshCcw className="w-5 h-5 text-amber-500" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {/* kill switch card */}
+                            <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
+                                <div className="mb-6">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="p-2 bg-red-500/10 rounded-lg">
+                                            <Power className="w-5 h-5 text-red-500" />
+                                        </div>
+                                        <h3 className="font-bold text-lg">Kill Switch</h3>
                                     </div>
-                                    <h3 className="font-bold text-lg">Reset Competition</h3>
+                                    <p className="text-sm text-gray-400">Instantly halt all trading for an active competition.</p>
                                 </div>
-                                <p className="text-sm text-gray-400">Clear AMM pools and refund users. Usually used for testing.</p>
+                                <button
+                                    onClick={() => handleManageAction('status', 'POST', { status: 'closed' })}
+                                    disabled={managing || !manageCompId}
+                                    className="w-full py-3 px-4 rounded-xl bg-red-950/50 hover:bg-red-900/50 border border-red-900/50 text-red-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Power className="w-4 h-4" />
+                                    Pause Trading
+                                </button>
                             </div>
-                            <button className="w-full py-3 px-4 rounded-xl bg-amber-950/50 hover:bg-amber-900/50 border border-amber-900/50 text-amber-400 font-semibold transition-colors flex items-center justify-center gap-2">
-                                <RefreshCcw className="w-4 h-4" />
-                                Reset Data
-                            </button>
+
+                            {/* resolve mkts card */}
+                            <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
+                                <div className="mb-6">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="p-2 bg-emerald-500/10 rounded-lg">
+                                            <DollarSign className="w-5 h-5 text-emerald-500" />
+                                        </div>
+                                        <h3 className="font-bold text-lg">Resolve & Payout</h3>
+                                    </div>
+                                    <p className="text-sm text-gray-400">Trigger the payout engine to distribute balances for a completed event.</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const teams = winningTeams.split(',').map(t => t.trim()).filter(Boolean);
+                                        if (teams.length !== 2) {
+                                            setManageMsg({ text: "Must provide exactly 2 winning teams separated by a comma.", type: "error" });
+                                            return;
+                                        }
+                                        handleManageAction('resolve', 'POST', { winningTeamIds: teams })
+                                    }}
+                                    disabled={managing || !manageCompId || !winningTeams}
+                                    className="w-full py-3 px-4 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/50 border border-emerald-900/50 text-emerald-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <DollarSign className="w-4 h-4" />
+                                    Execute Payouts
+                                </button>
+                            </div>
+
+                            {/* reset comp card */}
+                            <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
+                                <div className="mb-6">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="p-2 bg-amber-500/10 rounded-lg">
+                                            <RefreshCcw className="w-5 h-5 text-amber-500" />
+                                        </div>
+                                        <h3 className="font-bold text-lg">Reset Competition</h3>
+                                    </div>
+                                    <p className="text-sm text-gray-400">Clear AMM pools and refund users. Usually used for testing.</p>
+                                </div>
+                                <button
+                                    onClick={() => handleManageAction('reset', 'POST')}
+                                    disabled={managing || !manageCompId}
+                                    className="w-full py-3 px-4 rounded-xl bg-amber-950/50 hover:bg-amber-900/50 border border-amber-900/50 text-amber-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <RefreshCcw className="w-4 h-4" />
+                                    Reset Data
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -144,7 +255,7 @@ function Admin({ user }: AdminProps) {
                                     setCreateMsg({ text: `Success! Imported ${data.teams_imported} teams.`, type: "success" });
                                     setCompName('');
                                     setFile(null);
-                                    // Reset file input
+                                    // reset file input
                                     const fileInput = document.getElementById('team-file') as HTMLInputElement;
                                     if (fileInput) fileInput.value = '';
                                 } else {

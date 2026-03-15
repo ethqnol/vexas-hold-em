@@ -28,21 +28,27 @@ func main() {
 
 	api := app.Group("/api/v1")
 
-	// Users
+	// users
 	api.Get("/users/:id", handlers.GetUserProfile)
 	api.Post("/users/:id/sync", handlers.SyncUser)
 	api.Get("/users/:id/portfolio", handlers.GetUserPortfolio)
 
-	// Competitions & Markets
+	// comps + markets
 	api.Get("/competitions", handlers.GetCompetitions)
 	api.Get("/competitions/:id", handlers.GetCompetitionByID)
 	api.Get("/competitions/:id/markets", handlers.GetMarketsByCompetition)
+	api.Get("/competitions/:id/history", handlers.GetCompetitionHistory)
+	api.Get("/competitions/:id/markets/:marketId/history", handlers.GetMarketHistory)
 
-	// Trading
+	// trading
 	api.Post("/trade", handlers.PlaceTrade)
-	api.Post("/sell", handlers.SellShares)
+	api.Post("/trade/sell", handlers.SellShares)
 
-	// Admin (Restricted - to be secured later)
+	// casino
+	api.Post("/casino/roulette", handlers.PlayRoulette)
+	api.Post("/casino/slots", handlers.PlaySlots)
+
+	// admin (unsecured for now)
 	admin := api.Group("/admin")
 	admin.Post("/competitions", handlers.CreateCompetition)
 	admin.Put("/competitions/:id/status", handlers.UpdateCompetitionStatus)

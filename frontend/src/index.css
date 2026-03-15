@@ -4,6 +4,20 @@
 
 @layer base {
   body {
-    @apply bg-gray-900 text-gray-100 font-sans;
+    background-color: #111;
+    color: #f3f4f6;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Hide number input arrows */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
   }
 }
