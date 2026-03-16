@@ -12,14 +12,10 @@ import (
 
 // store API tokens
 var (
-	OpenWeatherToken string
 	BotToken string
 )
 
 func Run() {
-	// check that API tokens are handled appropriately
-	// fmt.Println("Got keys: ", OpenWeatherToken, BotToken)
-
 	// create a new discord session
 	discord, err := discordgo.New("Bot " + BotToken)
 	if err != nil {
@@ -48,18 +44,6 @@ func newMessage(discord *discordgo.Session, message *discordgo.MessageCreate) {
 
 	// respond to messages
 	switch {
-		/*
-	// OpenWeather commands
-	case strings.Contains(message.Content, "weather"):
-		discord.ChannelMessageSend(message.ChannelID, "I can help with that! Use '!zip <zip code>'")
-	case strings.Contains(message.Content, "bot"):
-		discord.ChannelMessageSend(message.ChannelID, "Hi there!")
-	case strings.Contains(message.Content, "!zip"):
-		currentWeather := getCurrentWeather(message.Content)
-		discord.ChannelMessageSendComplex(message.ChannelID, currentWeather)
-		*/
-	
-	// vexasholdem commands
 	case strings.Contains(message.Content, "user"):
 		discord.ChannelMessageSend(message.ChannelID, "Use '!user <email>'")
 	case strings.Contains(message.Content, "!user"):
