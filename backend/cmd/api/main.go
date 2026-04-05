@@ -37,7 +37,7 @@ func main() {
 
 	frontendOrigin := os.Getenv("FRONTEND_ORIGIN")
 	if frontendOrigin == "" {
-		frontendOrigin = "http://localhost:5173,https://vexasholdem.web.app"
+		frontendOrigin = "http://localhost:5173,https://vexasholdem.web.app,https://vexasholdem.firebase.app"
 	}
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: frontendOrigin,
