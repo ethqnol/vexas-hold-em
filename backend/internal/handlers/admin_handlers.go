@@ -125,7 +125,7 @@ func CreateCompetition(c *fiber.Ctx) error {
 			Location:     location,
 			YesPool:      100.0,
 			NoPool:       100.0,
-			Reserve:      200.0,
+			Reserve:      0.0,
 		})
 	}
 
@@ -271,7 +271,9 @@ func ResolveCompetition(c *fiber.Ctx) error {
 		if err := posDoc.DataTo(&pos); err != nil {
 			batch.Delete(posDoc.Ref)
 			opsCount++
-			_ = commitIfFull()
+			if err := commitIfFull(); err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to commit position deletion"})
+			}
 			continue
 		}
 
@@ -321,12 +323,7 @@ func ResolveCompetition(c *fiber.Ctx) error {
 			continue
 		}
 
-		payoutPerShare := 1.0
-		if market.Reserve < mw.totalShares {
-			// Should not happen under normal operation; pay proportionally if it does.
-			log.Printf("ResolveCompetition: reserve insufficient for market %s (reserve=%.6f, shares=%.6f)", teamID, market.Reserve, mw.totalShares)
-			payoutPerShare = market.Reserve / mw.totalShares
-		}
+		payoutPerShare := market.Reserve / mw.totalShares
 
 		marketPayout := mw.totalShares * payoutPerShare
 		batch.Update(mktRef, []firestore.Update{
@@ -452,7 +449,7 @@ func ResetCompetition(c *fiber.Ctx) error {
 		batch.Update(doc.Ref, []firestore.Update{
 			{Path: "yesPool", Value: 100.0},
 			{Path: "noPool", Value: 100.0},
-			{Path: "reserve", Value: 200.0},
+			{Path: "reserve", Value: 0.0},
 		})
 		opsCount++
 		if err := commitIfFull(); err != nil {
