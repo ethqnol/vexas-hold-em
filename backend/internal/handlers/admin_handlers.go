@@ -10,6 +10,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/vexas-hold-em/backend/internal/db"
 	"github.com/vexas-hold-em/backend/internal/models"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const adminTimeout = 30 * time.Second
@@ -48,19 +50,7 @@ func CreateCompetition(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "XLS file is empty"})
 	}
 
-	compDoc := db.Client.Collection("competitions").Doc(compName)
-	_, err = compDoc.Set(ctx, models.Competition{
-		Status: "active",
-	})
-	if err != nil {
-		log.Printf("CreateCompetition: Failed to create competition: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create competition"})
-	}
-
-	marketsRef := compDoc.Collection("markets")
-	successCount := 0
-	maxRow := int(sheet.MaxRow)
-
+	// Parse all markets from the sheet before writing anything to Firestore.
 	colMap := map[string]int{
 		"Team":         -1,
 		"Team Name":    -1,
@@ -69,14 +59,17 @@ func CreateCompetition(c *fiber.Ctx) error {
 		"Location":     -1,
 	}
 
+	var markets []models.Market
+	maxRow := int(sheet.MaxRow)
+
 	for i := 0; i <= maxRow; i++ {
 		row := sheet.Row(i)
 		if row == nil {
 			continue
 		}
 
-		if i == 0 || (colMap["Team"] == -1 && row.Col(0) == "Team") {
-			for j := 0; j < 10; j++ {
+		if i == 0 {
+			for j := 0; j <= row.LastCol(); j++ {
 				colName := row.Col(j)
 				if colName == "Team" || colName == "Team Number" {
 					colMap["Team"] = j
@@ -124,7 +117,7 @@ func CreateCompetition(c *fiber.Ctx) error {
 			location = row.Col(colMap["Location"])
 		}
 
-		market := models.Market{
+		markets = append(markets, models.Market{
 			TeamID:       teamID,
 			TeamName:     teamName,
 			Division:     division,
@@ -132,14 +125,43 @@ func CreateCompetition(c *fiber.Ctx) error {
 			Location:     location,
 			YesPool:      100.0,
 			NoPool:       100.0,
-		}
+		})
+	}
 
-		_, err := marketsRef.Doc(teamID).Set(ctx, market)
+	if len(markets) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "No teams found in XLS file"})
+	}
+
+	// Create the competition doc; returns an error if it already exists.
+	compDoc := db.Client.Collection("competitions").Doc(compName)
+	_, err = compDoc.Create(ctx, models.Competition{
+		Status: "active",
+	})
+	if err != nil {
+		if status.Code(err) == codes.AlreadyExists {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Competition already exists"})
+		}
+		log.Printf("CreateCompetition: Failed to create competition: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create competition"})
+	}
+
+	marketsRef := compDoc.Collection("markets")
+	successCount := 0
+
+	for _, market := range markets {
+		_, err := marketsRef.Doc(market.TeamID).Set(ctx, market)
 		if err == nil {
 			successCount++
 		} else {
-			log.Printf("CreateCompetition: Failed to create market for %s: %v", teamID, err)
+			log.Printf("CreateCompetition: Failed to create market for %s: %v", market.TeamID, err)
 		}
+	}
+
+	if successCount == 0 {
+		if _, delErr := compDoc.Delete(ctx); delErr != nil {
+			log.Printf("CreateCompetition: Failed to delete orphaned competition %s: %v", compName, delErr)
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to import any teams"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -205,23 +227,16 @@ func ResolveCompetition(c *fiber.Ctx) error {
 	ctx, cancel := context.WithTimeout(context.Background(), adminTimeout)
 	defer cancel()
 
-	compRef := db.Client.Collection("competitions").Doc(id)
-	_, err := compRef.Update(ctx, []firestore.Update{
-		{Path: "status", Value: "resolved"},
-	})
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update competition status"})
-	}
-
 	winners := make(map[string]bool)
 	for _, w := range req.WinningTeamIDs {
 		winners[w] = true
 	}
 
-	usersRef := db.Client.Collection("users")
-	users, err := usersRef.Documents(ctx).GetAll()
+	// Single collection group query instead of one query per user.
+	// Requires a Firestore collection group index on competitionId.
+	positionDocs, err := db.Client.CollectionGroup("positions").Where("competitionId", "==", id).Documents(ctx).GetAll()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch users"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch positions"})
 	}
 
 	batch := db.Client.Batch()
@@ -238,57 +253,58 @@ func ResolveCompetition(c *fiber.Ctx) error {
 		return nil
 	}
 
-	totalPayouts := 0.0
+	userWinnings := make(map[string]float64)
+	userRefs := make(map[string]*firestore.DocumentRef)
 
-	for _, userDoc := range users {
-		userID := userDoc.Ref.ID
-		positions, err := usersRef.Doc(userID).Collection("positions").Where("competitionId", "==", id).Documents(ctx).GetAll()
-		if err != nil {
+	for _, posDoc := range positionDocs {
+		userRef := posDoc.Ref.Parent.Parent
+		userID := userRef.ID
+		userRefs[userID] = userRef
+
+		teamID := posDoc.Ref.ID
+		var pos models.Position
+		if err := posDoc.DataTo(&pos); err != nil {
 			continue
 		}
 
-		userWinnings := 0.0
-
-		for _, posDoc := range positions {
-			teamID := posDoc.Ref.ID
-
-			var pos models.Position
-			if err := posDoc.DataTo(&pos); err != nil {
-				continue
-			}
-
-			isWinner := winners[teamID]
-
-			if isWinner && pos.YesShares > 0 {
-				userWinnings += pos.YesShares
-			} else if !isWinner && pos.NoShares > 0 {
-				userWinnings += pos.NoShares
-			}
-
-			batch.Delete(posDoc.Ref)
-			opsCount++
-			if err := commitIfFull(); err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to commit position deletion"})
-			}
+		isWinner := winners[teamID]
+		if isWinner && pos.YesShares > 0 {
+			userWinnings[userID] += pos.YesShares
+		} else if !isWinner && pos.NoShares > 0 {
+			userWinnings[userID] += pos.NoShares
 		}
 
-		if userWinnings > 0 {
-			batch.Update(userDoc.Ref, []firestore.Update{
-				{Path: "balance", Value: firestore.Increment(userWinnings)},
+		batch.Delete(posDoc.Ref)
+		opsCount++
+		if err := commitIfFull(); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to commit position deletion"})
+		}
+	}
+
+	totalPayouts := 0.0
+	for userID, winnings := range userWinnings {
+		if winnings > 0 {
+			batch.Update(userRefs[userID], []firestore.Update{
+				{Path: "balance", Value: firestore.Increment(winnings)},
 			})
 			opsCount++
-			totalPayouts += userWinnings
-
+			totalPayouts += winnings
 			if err := commitIfFull(); err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to commit user payout"})
 			}
 		}
 	}
 
-	if opsCount > 0 {
-		if _, err := batch.Commit(ctx); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "final commit failed for payouts"})
-		}
+	// Update competition status last — only marked resolved once all payouts are committed.
+	compRef := db.Client.Collection("competitions").Doc(id)
+	batch.Update(compRef, []firestore.Update{
+		{Path: "status", Value: "resolved"},
+		{Path: "winningTeamIds", Value: req.WinningTeamIDs},
+	})
+	opsCount++
+
+	if _, err := batch.Commit(ctx); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "final commit failed for payouts"})
 	}
 
 	return c.JSON(fiber.Map{
@@ -314,17 +330,19 @@ func ResetCompetition(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch ledger"})
 	}
 
+	// Use collection group query to get all positions for this competition directly,
+	// rather than reconstructing them from the ledger (which would miss orphaned docs).
+	positionDocs, err := db.Client.CollectionGroup("positions").Where("competitionId", "==", id).Documents(ctx).GetAll()
+	if err != nil {
+		log.Printf("ResetCompetition: failed to fetch positions: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch positions"})
+	}
+
 	userRefunds := make(map[string]float64)
-	userPositions := make(map[string]map[string]bool)
 	for _, doc := range txns {
 		var tx models.Transaction
 		if err := doc.DataTo(&tx); err == nil {
 			userRefunds[tx.UserID] += tx.AmountSpent
-
-			if userPositions[tx.UserID] == nil {
-				userPositions[tx.UserID] = make(map[string]bool)
-			}
-			userPositions[tx.UserID][tx.TeamID] = true
 		}
 	}
 
@@ -379,21 +397,18 @@ func ResetCompetition(c *fiber.Ctx) error {
 		}
 	}
 
-	for userID, marketsMap := range userPositions {
-		for teamID := range marketsMap {
-			posRef := db.Client.Collection("users").Doc(userID).Collection("positions").Doc(teamID)
-			batch.Delete(posRef)
-			opsCount++
-			if err := commitIfFull(); err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to wipe positions"})
-			}
+	for _, posDoc := range positionDocs {
+		batch.Delete(posDoc.Ref)
+		opsCount++
+		if err := commitIfFull(); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to wipe positions"})
 		}
 	}
 
 	compRef := db.Client.Collection("competitions").Doc(id)
 	batch.Update(compRef, []firestore.Update{
 		{Path: "status", Value: "active"},
-		{Path: "winningTeamId", Value: firestore.Delete},
+		{Path: "winningTeamIds", Value: firestore.Delete},
 	})
 	opsCount++
 
