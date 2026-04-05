@@ -167,7 +167,7 @@ function Competition() {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Trade failed');
                 setTradeResult({ shares: data.shares });
-                const newOdds = data.newNoPool / (data.newYesPool + data.newNoPool);
+                const newOdds = data.newYesPool / (data.newYesPool + data.newNoPool);
                 setMarkets(prev => prev.map(m => m.id === selected.id ? { ...m, yesOdds: newOdds } : m));
                 setSelected(prev => prev ? { ...prev, yesOdds: newOdds } : prev);
                 setHistory(prev => [...prev, { t: Date.now(), y: newOdds }]);
@@ -190,7 +190,7 @@ function Competition() {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Sell failed');
                 setTradeResult({ payout: data.payout });
-                const newOdds = data.newNoPool / (data.newYesPool + data.newNoPool);
+                const newOdds = data.newYesPool / (data.newYesPool + data.newNoPool);
                 setMarkets(prev => prev.map(m => m.id === selected.id ? { ...m, yesOdds: newOdds } : m));
                 setSelected(prev => prev ? { ...prev, yesOdds: newOdds } : prev);
                 setHistory(prev => [...prev, { t: Date.now(), y: newOdds }]);
