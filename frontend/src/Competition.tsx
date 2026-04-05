@@ -308,7 +308,7 @@ function Competition() {
                                 {markets.map((m, i) => (
                                     <Line
                                         key={m.id}
-                                        type="monotone"
+                                        type="stepAfter"
                                         dataKey={m.id}
                                         stroke={CHART_COLORS[i % CHART_COLORS.length]}
                                         strokeWidth={hoveredLine === m.id ? 2.5 : 1.5}
@@ -473,7 +473,7 @@ function Competition() {
                                                     contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 11 }}
                                                 />
                                                 <Line
-                                                    type="monotone"
+                                                    type="stepAfter"
                                                     dataKey="y"
                                                     stroke="#3b82f6"
                                                     strokeWidth={2}
