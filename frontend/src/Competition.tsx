@@ -16,6 +16,7 @@ interface Market {
         location: string;
         yesPool: number;
         noPool: number;
+        initialYesOdds: number;
     };
     yesOdds: number;
 }
@@ -80,17 +81,12 @@ function Competition() {
                         const points = data.history || [];
                         const sortedPoints = [...points].sort((a, b) => a.t - b.t);
 
-                        // Only seed the padding point with odds for markets that have no history.
-                        // For those markets, current odds = initial odds, so the flat line is correct.
-                        // Markets with history must NOT be pre-seeded — their value before their
-                        // first trade is unknown here, and seeding with current odds would show the
-                        // chart starting at the final value and replaying backwards.
-                        const marketIdsWithHistory = new Set(sortedPoints.map(pt => pt.teamId));
+                        // Seed every market with its initial odds (stored at creation time).
+                        // This is correct for markets with no history (current = initial)
+                        // and gives the correct pre-history baseline for markets with trades.
                         const teamOdds: Record<string, number> = {};
                         loadedMarkets.forEach(m => {
-                            if (!marketIdsWithHistory.has(m.id)) {
-                                teamOdds[m.id] = m.yesOdds;
-                            }
+                            teamOdds[m.id] = m.data.initialYesOdds ?? m.yesOdds;
                         });
 
                         const chart: any[] = [];

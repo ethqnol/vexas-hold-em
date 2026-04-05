@@ -24,14 +24,15 @@ type Competition struct {
 }
 
 type Market struct {
-	TeamID       string  `firestore:"teamId" json:"teamId"`
-	TeamName     string  `firestore:"teamName" json:"teamName"`
-	Division     string  `firestore:"division" json:"division"`
-	Organization string  `firestore:"organization" json:"organization"`
-	Location     string  `firestore:"location" json:"location"`
-	YesPool      float64 `firestore:"yesPool" json:"yesPool"`
-	NoPool       float64 `firestore:"noPool" json:"noPool"`
-	Reserve      float64 `firestore:"reserve" json:"reserve"`
+	TeamID          string  `firestore:"teamId" json:"teamId"`
+	TeamName        string  `firestore:"teamName" json:"teamName"`
+	Division        string  `firestore:"division" json:"division"`
+	Organization    string  `firestore:"organization" json:"organization"`
+	Location        string  `firestore:"location" json:"location"`
+	YesPool         float64 `firestore:"yesPool" json:"yesPool"`
+	NoPool          float64 `firestore:"noPool" json:"noPool"`
+	Reserve         float64 `firestore:"reserve" json:"reserve"`
+	InitialYesOdds  float64 `firestore:"initialYesOdds" json:"initialYesOdds"`
 }
 
 type Transaction struct {

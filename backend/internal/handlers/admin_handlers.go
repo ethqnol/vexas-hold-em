@@ -140,9 +140,11 @@ func CreateCompetition(c *fiber.Ctx) error {
 	}
 	initialYesPool := 500.0 * yesFrac
 	initialNoPool := 500.0 - initialYesPool
+	initialYesOdds := initialYesPool / (initialYesPool + initialNoPool)
 	for i := range markets {
 		markets[i].YesPool = initialYesPool
 		markets[i].NoPool = initialNoPool
+		markets[i].InitialYesOdds = initialYesOdds
 	}
 
 	// Create the competition doc; returns an error if it already exists.
