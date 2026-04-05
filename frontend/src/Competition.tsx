@@ -538,79 +538,67 @@ function Competition() {
                             {/* estimated return */}
                             {amount && parseFloat(amount) > 0 && (
                                 <div className="p-3 rounded-lg bg-white/[0.04] text-xs text-gray-500 space-y-1">
-                                    <div className="flex justify-between">
-                                        <span>avg execution price</span>
-                                        <span className="text-gray-300 font-mono">
-                                            ~{(() => {
-                                                const amountFloat = parseFloat(amount) || 0;
-                                                if (amountFloat <= 0) return '0¢';
-                                                const k = selected.data.yesPool * selected.data.noPool;
-                                                if (tradeMode === 'buy') {
-                                                    let estShares = 0;
-                                                    if (tradeType === 'YES') {
-                                                        const newNo = selected.data.noPool + amountFloat;
-                                                        const newYes = k / newNo;
-                                                        estShares = selected.data.yesPool - newYes;
-                                                    } else {
-                                                        const newYes = selected.data.yesPool + amountFloat;
-                                                        const newNo = k / newYes;
-                                                        estShares = selected.data.noPool - newNo;
-                                                    }
-                                                    if (estShares <= 0) return '0¢';
-                                                    return Math.round((amountFloat / estShares) * 100) + '¢';
-                                                } else {
-                                                    let payout = 0;
-                                                    if (tradeType === 'YES') {
-                                                        const newYes = selected.data.yesPool + amountFloat;
-                                                        const newNo = k / newYes;
-                                                        payout = selected.data.noPool - newNo;
-                                                    } else {
-                                                        const newNo = selected.data.noPool + amountFloat;
-                                                        const newYes = k / newNo;
-                                                        payout = selected.data.yesPool - newYes;
-                                                    }
-                                                    if (payout <= 0) return '0¢';
-                                                    return Math.round((payout / amountFloat) * 100) + '¢';
-                                                }
-                                            })()}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>{tradeMode === 'buy' ? 'est. shares' : 'est. payout'}</span>
-                                        <span className="text-gray-300 font-mono">
-                                            {tradeMode === 'buy' ? '' : '$'}
-                                            ~{(() => {
-                                                const amountFloat = parseFloat(amount) || 0;
-                                                if (amountFloat <= 0) return '0.00';
-                                                const k = selected.data.yesPool * selected.data.noPool;
-                                                if (tradeMode === 'buy') {
-                                                    let estShares = 0;
-                                                    if (tradeType === 'YES') {
-                                                        const newNo = selected.data.noPool + amountFloat;
-                                                        const newYes = k / newNo;
-                                                        estShares = selected.data.yesPool - newYes;
-                                                    } else {
-                                                        const newYes = selected.data.yesPool + amountFloat;
-                                                        const newNo = k / newYes;
-                                                        estShares = selected.data.noPool - newNo;
-                                                    }
-                                                    return estShares.toFixed(4);
-                                                } else {
-                                                    let payout = 0;
-                                                    if (tradeType === 'YES') {
-                                                        const newYes = selected.data.yesPool + amountFloat;
-                                                        const newNo = k / newYes;
-                                                        payout = selected.data.noPool - newNo;
-                                                    } else {
-                                                        const newNo = selected.data.noPool + amountFloat;
-                                                        const newYes = k / newNo;
-                                                        payout = selected.data.yesPool - newYes;
-                                                    }
-                                                    return payout.toFixed(2);
-                                                }
-                                            })()}
-                                        </span>
-                                    </div>
+                                    {(() => {
+                                        const v = parseFloat(amount) || 0;
+                                        if (v <= 0) return null;
+                                        const yesPool = selected.data.yesPool;
+                                        const noPool = selected.data.noPool;
+
+                                        // mirrors backend buyShares:
+                                        //   shares = amount + otherPool * ln((ownPool + amount) / ownPool)
+                                        const estBuyShares = (amt: number, ownPool: number, otherPool: number) =>
+                                            amt + otherPool * Math.log((ownPool + amt) / ownPool);
+
+                                        // mirrors backend solveSellPayout (Newton's method):
+                                        //   shares = X + otherPool * ln(ownPool / (ownPool - X))
+                                        const estSellPayout = (shares: number, ownPool: number, otherPool: number) => {
+                                            let X = shares * ownPool / (ownPool + otherPool);
+                                            for (let i = 0; i < 20; i++) {
+                                                const rem = ownPool - X;
+                                                if (rem <= 1e-9) { X = ownPool * (1 - 1e-9); break; }
+                                                const f = X + otherPool * Math.log(ownPool / rem) - shares;
+                                                const df = 1 + otherPool / rem;
+                                                const delta = f / df;
+                                                X -= delta;
+                                                if (Math.abs(delta) < 1e-10) break;
+                                            }
+                                            return Math.max(0, X);
+                                        };
+
+                                        let estShares = 0;
+                                        let estPayout = 0;
+
+                                        if (tradeMode === 'buy') {
+                                            estShares = tradeType === 'YES'
+                                                ? estBuyShares(v, yesPool, noPool)
+                                                : estBuyShares(v, noPool, yesPool);
+                                        } else {
+                                            estPayout = tradeType === 'YES'
+                                                ? estSellPayout(v, yesPool, noPool)
+                                                : estSellPayout(v, noPool, yesPool);
+                                        }
+
+                                        const avgPrice = tradeMode === 'buy'
+                                            ? (estShares > 0 ? v / estShares : 0)
+                                            : (v > 0 ? estPayout / v : 0);
+
+                                        return (<>
+                                            <div className="flex justify-between">
+                                                <span>avg execution price</span>
+                                                <span className="text-gray-300 font-mono">
+                                                    ~{Math.round(avgPrice * 100)}¢
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>{tradeMode === 'buy' ? 'est. shares' : 'est. payout'}</span>
+                                                <span className="text-gray-300 font-mono">
+                                                    {tradeMode === 'buy'
+                                                        ? `~${estShares.toFixed(4)}`
+                                                        : `~$${estPayout.toFixed(2)}`}
+                                                </span>
+                                            </div>
+                                        </>);
+                                    })()}
                                 </div>
                             )}
 
