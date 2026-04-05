@@ -20,7 +20,7 @@ type Position struct {
 
 type Competition struct {
 	Status        string `firestore:"status" json:"status"`
-	WinningTeamID string `firestore:"winningTeamId,omitempty" json:"winningTeamId,omitempty"`
+	WinningTeamIDs []string `firestore:"winningTeamIds,omitempty" json:"winningTeamIds,omitempty"`
 }
 
 type Market struct {
@@ -31,6 +31,7 @@ type Market struct {
 	Location     string  `firestore:"location" json:"location"`
 	YesPool      float64 `firestore:"yesPool" json:"yesPool"`
 	NoPool       float64 `firestore:"noPool" json:"noPool"`
+	Reserve      float64 `firestore:"reserve" json:"reserve"`
 }
 
 type Transaction struct {
