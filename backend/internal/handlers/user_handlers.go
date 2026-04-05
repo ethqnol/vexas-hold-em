@@ -3,10 +3,20 @@ package handlers
 import (
 	"context"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/vexas-hold-em/backend/internal/db"
 	"github.com/vexas-hold-em/backend/internal/models"
+)
+
+// leaderboard cache
+var (
+	cachedLeaderboard     []fiber.Map
+	leaderboardCacheTime  time.Time
+	leaderboardCacheMutex sync.RWMutex
+	leaderboardCacheTTL   = 5 * time.Minute
 )
 
 // gets user info & bal
@@ -18,7 +28,10 @@ func GetUserProfile(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database not initialized"})
 	}
 
-	doc, err := db.Client.Collection("users").Doc(id).Get(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	doc, err := db.Client.Collection("users").Doc(id).Get(ctx)
 	if err != nil {
 		log.Printf("GetUserProfile: User not found or error getting doc: %v\n", err)
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
@@ -56,8 +69,11 @@ func SyncUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	docRef := db.Client.Collection("users").Doc(id)
-	doc, err := docRef.Get(context.Background())
+	doc, err := docRef.Get(ctx)
 
 	if err != nil || !doc.Exists() {
 		newUser := models.User{
@@ -66,7 +82,7 @@ func SyncUser(c *fiber.Ctx) error {
 			DisplayName: req.DisplayName,
 		}
 
-		_, err := docRef.Set(context.Background(), newUser)
+		_, err := docRef.Set(ctx, newUser)
 		if err != nil {
 			log.Printf("SyncUser: Error creating user doc: %v\n", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user"})
@@ -94,7 +110,10 @@ func GetUserPortfolio(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database not initialized"})
 	}
 
-	iter := db.Client.Collection("users").Doc(id).Collection("positions").Documents(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	iter := db.Client.Collection("users").Doc(id).Collection("positions").Documents(ctx)
 	docs, err := iter.GetAll()
 	if err != nil {
 		log.Printf("GetUserPortfolio: Failed to fetch portfolio: %v\n", err)
@@ -124,3 +143,67 @@ func GetUserPortfolio(c *fiber.Ctx) error {
 		"data":    portfolio,
 	})
 }
+
+// top 50 users by current balance
+func GetLeaderboard(c *fiber.Ctx) error {
+	if db.Client == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "db not initialized"})
+	}
+
+	// check cache first
+	leaderboardCacheMutex.RLock()
+	if time.Since(leaderboardCacheTime) < leaderboardCacheTTL && cachedLeaderboard != nil {
+		cached := cachedLeaderboard
+		leaderboardCacheMutex.RUnlock()
+		return c.JSON(fiber.Map{
+			"leaderboard": cached,
+			"status":      "success",
+			"cached":      true,
+		})
+	}
+	leaderboardCacheMutex.RUnlock()
+
+	// cache miss - fetch from firestore
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	docs, err := db.Client.Collection("users").OrderBy("balance", 1).Limit(50).Documents(ctx).GetAll()
+	if err != nil {
+		log.Printf("GetLeaderboard: failed to fetch: %v\n", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch leaderboard"})
+	}
+
+	// reverse for descending (Firestore Desc constant = 1 in the go SDK)
+	for i, j := 0, len(docs)-1; i < j; i, j = i+1, j-1 {
+		docs[i], docs[j] = docs[j], docs[i]
+	}
+
+	leaderboard := []fiber.Map{}
+	for i, doc := range docs {
+		var user models.User
+		if err := doc.DataTo(&user); err != nil {
+			continue
+		}
+		leaderboard = append(leaderboard, fiber.Map{
+			"rank":        i + 1,
+			"userId":      doc.Ref.ID,
+			"displayName": user.DisplayName,
+			"balance":     user.Balance,
+			"totalLost":   user.TotalLost,
+			"title":       user.Title,
+		})
+	}
+
+	// update cache
+	leaderboardCacheMutex.Lock()
+	cachedLeaderboard = leaderboard
+	leaderboardCacheTime = time.Now()
+	leaderboardCacheMutex.Unlock()
+
+	return c.JSON(fiber.Map{
+		"leaderboard": leaderboard,
+		"status":      "success",
+		"cached":      false,
+	})
+}
+

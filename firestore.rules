@@ -27,9 +27,16 @@ service cloud.firestore {
       }
     }
 
+    // lottery jackpot — public read so guests can see the pot
+    match /meta/{doc} {
+      allow read: if true;
+      allow write: if false; // backend only
+    }
+
     // deny everything else
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
+

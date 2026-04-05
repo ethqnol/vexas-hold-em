@@ -2,19 +2,22 @@ package handlers
 
 import (
 	"context"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/vexas-hold-em/backend/internal/db"
 	"github.com/vexas-hold-em/backend/internal/models"
 )
 
-// list all active comps
 func GetCompetitions(c *fiber.Ctx) error {
 	if db.Client == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database not initialized"})
 	}
 
-	docs, err := db.Client.Collection("competitions").Documents(context.Background()).GetAll()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	docs, err := db.Client.Collection("competitions").Documents(ctx).GetAll()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch competitions"})
 	}
@@ -36,14 +39,16 @@ func GetCompetitions(c *fiber.Ctx) error {
 	})
 }
 
-// get a single comp by ID
 func GetCompetitionByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if db.Client == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database not initialized"})
 	}
 
-	doc, err := db.Client.Collection("competitions").Doc(id).Get(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	doc, err := db.Client.Collection("competitions").Doc(id).Get(ctx)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Competition not found"})
 	}

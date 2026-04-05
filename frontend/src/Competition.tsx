@@ -59,7 +59,7 @@ function Competition() {
         const loadData = async () => {
             let loadedMarkets: Market[] = [];
             try {
-                const res = await fetch(`http://localhost:8080/api/v1/competitions/${id}/markets`);
+                const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/competitions/${id}/markets`);
                 if (res.ok) {
                     const data = await res.json();
                     loadedMarkets = data.markets || [];
@@ -74,31 +74,35 @@ function Competition() {
             if (loadedMarkets.length > 0) {
                 setGlobalLoading(true);
                 try {
-                    const res = await fetch(`http://localhost:8080/api/v1/competitions/${id}/history`);
+                    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/competitions/${id}/history`);
                     if (res.ok) {
                         const data = await res.json();
                         const points = data.history || [];
-                        // only track odds for traded markets
                         const teamOdds: Record<string, number> = {};
-                        const tradedMarkets = new Set<string>();
+                        loadedMarkets.forEach(m => teamOdds[m.id] = 0.5);
 
                         const chart: any[] = [];
+                        
+                        // Dynamically pad the left side so that the 0.5 baseline flattens out visually 
+                        const now = Date.now();
+                        const minTime = points.length > 0 
+                            ? points[0].t - Math.max(60000, (now - points[0].t) * 0.10) 
+                            : now - 60000;
+                        chart.push({ t: minTime, ...teamOdds });
 
-                        for (const pt of points) {
-                            // if first trade for this mkt, inject baseline
-                            if (!tradedMarkets.has(pt.teamId)) {
-                                tradedMarkets.add(pt.teamId);
-                                teamOdds[pt.teamId] = 0.5;
-                                // add baseline point right before first trade
-                                const baselineTime = chart.length > 0 ? pt.t - 1 : pt.t - 60000;
-                                chart.push({ t: baselineTime, ...teamOdds });
-                            }
+                        // Sort points chronologically
+                        const sortedPoints = [...points].sort((a, b) => a.t - b.t);
+
+                        for (const pt of sortedPoints) {
                             teamOdds[pt.teamId] = pt.y;
                             chart.push({
                                 t: pt.t,
                                 ...teamOdds
                             });
                         }
+                        
+                        // Append trailing point to stretch the graph to the right edge at the current time
+                        chart.push({ t: Date.now(), ...teamOdds });
 
                         setGlobalHistory(chart);
                     }
@@ -118,7 +122,7 @@ function Competition() {
     const fetchHistory = async (marketId: string) => {
         setHistoryLoading(true);
         try {
-            const res = await fetch(`http://localhost:8080/api/v1/competitions/${id}/markets/${marketId}/history`);
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/competitions/${id}/markets/${marketId}/history`);
             if (res.ok) {
                 const data = await res.json();
                 setHistory(data.history || []);
@@ -149,7 +153,7 @@ function Competition() {
 
         try {
             if (tradeMode === 'buy') {
-                const res = await fetch('http://localhost:8080/api/v1/trade', {
+                const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/trade`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -172,7 +176,7 @@ function Competition() {
                     return [...prev, { t: Date.now(), ...last, [selected.id]: newOdds }];
                 });
             } else {
-                const res = await fetch('http://localhost:8080/api/v1/trade/sell', {
+                const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/trade/sell`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -249,17 +253,26 @@ function Competition() {
                         No market activity yet.
                     </div>
                 ) : (
-                    <div className="h-72 pt-4 pb-2 pr-6 border border-white/[0.04] rounded-xl bg-[#161616]">
+                    <div className="h-72 pt-4 pb-2 pr-[20%] border border-white/[0.04] rounded-xl bg-[#161616]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={globalHistory}>
-                                <XAxis dataKey="t" type="number" scale="time" domain={['dataMin', (dataMax: number) => dataMax + (dataMax - (globalHistory[0]?.t || dataMax)) * 0.6]} hide />
+                            <LineChart data={globalHistory} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
+                                <XAxis 
+                                    dataKey="t" 
+                                    type="number" 
+                                    domain={['dataMin', 'dataMax']} 
+                                    hide 
+                                />
                                 <YAxis
                                     domain={[0, 1]}
+                                    ticks={[0, 0.25, 0.5, 0.75, 1]}
                                     tickFormatter={v => `${Math.round(v * 100)}%`}
                                     tick={{ fontSize: 10, fill: '#4b5563' }}
                                     width={40}
+                                    axisLine={false}
+                                    tickLine={false}
                                 />
                                 <Tooltip
+                                    cursor={{ stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1, strokeDasharray: '4 4' }}
                                     content={({ active, payload }) => {
                                         if (!active || !payload || !payload.length) return null;
 
@@ -399,29 +412,57 @@ function Competition() {
                                 </div>
                             ) : (
                                 <ResponsiveContainer width="100%" height={100}>
-                                    <LineChart data={history.length === 1 ? [{ t: history[0].t - 60000, y: 0.5 }, ...history] : history} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
-                                        <XAxis dataKey="t" hide />
-                                        <YAxis
-                                            domain={[0, 1]}
-                                            tickFormatter={v => `${Math.round(v * 100)}%`}
-                                            tick={{ fontSize: 10, fill: '#4b5563' }}
-                                            width={36}
-                                        />
-                                        <Tooltip
-                                            formatter={(v) => [`${Math.round((v as number) * 100)}%`, 'YES']}
-                                            labelFormatter={() => ''}
-                                            contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 11 }}
-                                        />
-                                        <ReferenceLine y={0.5} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
-                                        <Line
-                                            type="stepAfter"
-                                            dataKey="y"
-                                            stroke="#3b82f6"
-                                            strokeWidth={2}
-                                            dot={false}
-                                            activeDot={{ r: 3, fill: '#3b82f6' }}
-                                        />
-                                    </LineChart>
+                                    {(() => {
+                                        const sortedHistory = [...history].sort((a, b) => a.t - b.t);
+                                        const endT = Date.now();
+                                        const startT = sortedHistory.length > 0
+                                            ? sortedHistory[0].t - Math.max(60000, (endT - sortedHistory[0].t) * 0.10)
+                                            : endT - 60000;
+
+                                        const singleChartData = sortedHistory.length === 0 
+                                            ? [] 
+                                            : [
+                                                { t: startT, y: 0.5 },
+                                                ...sortedHistory,
+                                                { ...sortedHistory[sortedHistory.length - 1], t: endT }
+                                            ];
+
+                                        return (
+                                            <LineChart data={singleChartData} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+                                                <XAxis 
+                                                    dataKey="t" 
+                                                    type="number" 
+                                                    domain={['dataMin', 'dataMax']} 
+                                                    hide 
+                                                />
+                                                <YAxis
+                                                    domain={[0, 1]}
+                                                    ticks={[0, 0.25, 0.5, 0.75, 1]}
+                                                    tickFormatter={v => `${Math.round(v * 100)}%`}
+                                                    tick={{ fontSize: 10, fill: '#4b5563' }}
+                                                    width={36}
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                />
+                                                <Tooltip
+                                                    cursor={{ stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                                    formatter={(v) => [`${Math.round((v as number) * 100)}%`, 'YES']}
+                                                    labelFormatter={() => ''}
+                                                    contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 11 }}
+                                                />
+                                                <ReferenceLine y={0.5} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+                                                <Line
+                                                    type="stepAfter"
+                                                    dataKey="y"
+                                                    stroke="#3b82f6"
+                                                    strokeWidth={2}
+                                                    dot={false}
+                                                    activeDot={{ r: 3, fill: '#3b82f6' }}
+                                                    isAnimationActive={false}
+                                                />
+                                            </LineChart>
+                                        );
+                                    })()}
                                 </ResponsiveContainer>
                             )}
                         </div>
@@ -495,16 +536,79 @@ function Competition() {
                             </div>
 
                             {/* estimated return */}
-                            {amount && parseFloat(amount) > 0 && tradeMode === 'buy' && (
+                            {amount && parseFloat(amount) > 0 && (
                                 <div className="p-3 rounded-lg bg-white/[0.04] text-xs text-gray-500 space-y-1">
                                     <div className="flex justify-between">
-                                        <span>avg price</span>
-                                        <span className="text-gray-300 font-mono">~{tradeType === 'YES' ? yesPrice : noPrice}¢</span>
+                                        <span>avg execution price</span>
+                                        <span className="text-gray-300 font-mono">
+                                            ~{(() => {
+                                                const amountFloat = parseFloat(amount) || 0;
+                                                if (amountFloat <= 0) return '0¢';
+                                                const k = selected.data.yesPool * selected.data.noPool;
+                                                if (tradeMode === 'buy') {
+                                                    let estShares = 0;
+                                                    if (tradeType === 'YES') {
+                                                        const newNo = selected.data.noPool + amountFloat;
+                                                        const newYes = k / newNo;
+                                                        estShares = selected.data.yesPool - newYes;
+                                                    } else {
+                                                        const newYes = selected.data.yesPool + amountFloat;
+                                                        const newNo = k / newYes;
+                                                        estShares = selected.data.noPool - newNo;
+                                                    }
+                                                    if (estShares <= 0) return '0¢';
+                                                    return Math.round((amountFloat / estShares) * 100) + '¢';
+                                                } else {
+                                                    let payout = 0;
+                                                    if (tradeType === 'YES') {
+                                                        const newYes = selected.data.yesPool + amountFloat;
+                                                        const newNo = k / newYes;
+                                                        payout = selected.data.noPool - newNo;
+                                                    } else {
+                                                        const newNo = selected.data.noPool + amountFloat;
+                                                        const newYes = k / newNo;
+                                                        payout = selected.data.yesPool - newYes;
+                                                    }
+                                                    if (payout <= 0) return '0¢';
+                                                    return Math.round((payout / amountFloat) * 100) + '¢';
+                                                }
+                                            })()}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span>est. shares</span>
+                                        <span>{tradeMode === 'buy' ? 'est. shares' : 'est. payout'}</span>
                                         <span className="text-gray-300 font-mono">
-                                            ~{(parseFloat(amount) / ((tradeType === 'YES' ? yesPrice : noPrice) / 100)).toFixed(1)}
+                                            {tradeMode === 'buy' ? '' : '$'}
+                                            ~{(() => {
+                                                const amountFloat = parseFloat(amount) || 0;
+                                                if (amountFloat <= 0) return '0.00';
+                                                const k = selected.data.yesPool * selected.data.noPool;
+                                                if (tradeMode === 'buy') {
+                                                    let estShares = 0;
+                                                    if (tradeType === 'YES') {
+                                                        const newNo = selected.data.noPool + amountFloat;
+                                                        const newYes = k / newNo;
+                                                        estShares = selected.data.yesPool - newYes;
+                                                    } else {
+                                                        const newYes = selected.data.yesPool + amountFloat;
+                                                        const newNo = k / newYes;
+                                                        estShares = selected.data.noPool - newNo;
+                                                    }
+                                                    return estShares.toFixed(4);
+                                                } else {
+                                                    let payout = 0;
+                                                    if (tradeType === 'YES') {
+                                                        const newYes = selected.data.yesPool + amountFloat;
+                                                        const newNo = k / newYes;
+                                                        payout = selected.data.noPool - newNo;
+                                                    } else {
+                                                        const newNo = selected.data.noPool + amountFloat;
+                                                        const newYes = k / newNo;
+                                                        payout = selected.data.yesPool - newYes;
+                                                    }
+                                                    return payout.toFixed(2);
+                                                }
+                                            })()}
                                         </span>
                                     </div>
                                 </div>

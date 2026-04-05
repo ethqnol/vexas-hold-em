@@ -6,15 +6,15 @@ import (
 
 	"cloud.google.com/go/firestore"
 	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/auth"
 )
 
 var Client *firestore.Client
+var AuthClient *auth.Client
 
 func InitFirestore() {
 	ctx := context.Background()
 
-	// connects automatically using google_application_credentials
-	// in dev, or app default credentials in prod
 	conf := &firebase.Config{ProjectID: "vexasholdem"}
 	app, err := firebase.NewApp(ctx, conf)
 	if err != nil {
@@ -28,6 +28,13 @@ func InitFirestore() {
 	}
 
 	Client = client
+
+	authClient, err := app.Auth(ctx)
+	if err != nil {
+		log.Printf("⚠️ Warning: Could not initialize Firebase Auth client: %v\n", err)
+	}
+	AuthClient = authClient
+
 	log.Println("Successfully connected to Firestore database as Admin.")
 }
 

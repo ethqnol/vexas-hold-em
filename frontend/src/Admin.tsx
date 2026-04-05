@@ -5,9 +5,10 @@ import { Settings, Plus, Power, RefreshCcw, DollarSign } from 'lucide-react';
 
 interface AdminProps {
     user: User | null;
+    profile: any;
 }
 
-function Admin({ user }: AdminProps) {
+function Admin({ user, profile }: AdminProps) {
     const [activeTab, setActiveTab] = useState<'create' | 'manage'>('manage');
     const [compName, setCompName] = useState('');
     const [file, setFile] = useState<File | null>(null);
@@ -22,22 +23,23 @@ function Admin({ user }: AdminProps) {
     const [comps, setComps] = useState<any[]>([]);
     const [compsLoading, setCompsLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchComps = async () => {
-            try {
-                const res = await fetch('http://localhost:8080/api/v1/competitions');
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.status === 'success') {
-                        setComps(data.competitions || []);
-                    }
+    const fetchComps = async () => {
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/competitions`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.status === 'success') {
+                    setComps(data.competitions || []);
                 }
-            } catch (e) {
-                console.error("Failed to fetch competitions", e);
-            } finally {
-                setCompsLoading(false);
             }
-        };
+        } catch (e) {
+            console.error("Failed to fetch competitions", e);
+        } finally {
+            setCompsLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchComps();
     }, []);
 
@@ -46,9 +48,17 @@ function Admin({ user }: AdminProps) {
         setManaging(true);
         setManageMsg(null);
         try {
-            const res = await fetch(`http://localhost:8080/api/v1/admin/competitions/${manageCompId}/${endpoint}`, {
+            const token = await user?.getIdToken();
+            const headers: any = {
+                'Authorization': `Bearer ${token}`
+            };
+            if (body) {
+                headers['Content-Type'] = 'application/json';
+            }
+
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/admin/competitions/${manageCompId}/${endpoint}`, {
                 method,
-                headers: body ? { 'Content-Type': 'application/json' } : undefined,
+                headers,
                 body: body ? JSON.stringify(body) : undefined
             });
             const data = await res.json();
@@ -58,6 +68,7 @@ function Admin({ user }: AdminProps) {
                     msg += ` (Payouts: ${data.totalPayoutsDistributed} VEX)`;
                 }
                 setManageMsg({ text: msg, type: 'success' });
+                fetchComps();
             } else {
                 setManageMsg({ text: data.error || "Action failed.", type: 'error' });
             }
@@ -68,8 +79,8 @@ function Admin({ user }: AdminProps) {
         }
     };
 
-    // strict check - only this email allowed
-    const isAdmin = user?.email === 'drinkfood.exe@gmail.com';
+    // strict check based on firestore boolean
+    const isAdmin = profile?.isAdmin === true;
 
     if (!isAdmin) {
         return <Navigate to="/" replace />;
@@ -152,25 +163,37 @@ function Admin({ user }: AdminProps) {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {/* kill switch card */}
-                            <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
-                                <div className="mb-6">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className="p-2 bg-red-500/10 rounded-lg">
-                                            <Power className="w-5 h-5 text-red-500" />
+                            {(() => {
+                                const selectedComp = comps.find(c => c.id === manageCompId);
+                                const isPaused = selectedComp?.data?.status === 'closed' || selectedComp?.data?.status === 'paused';
+                                return (
+                                    <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
+                                        <div className="mb-6">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className={`p-2 rounded-lg ${isPaused ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
+                                                    <Power className={`w-5 h-5 ${isPaused ? 'text-green-500' : 'text-red-500'}`} />
+                                                </div>
+                                                <h3 className="font-bold text-lg">{isPaused ? 'Resume Engine' : 'Kill Switch'}</h3>
+                                            </div>
+                                            <p className="text-sm text-gray-400">
+                                                {isPaused ? 'Resume trading activities for this competition.' : 'Instantly halt all trading for an active competition.'}
+                                            </p>
                                         </div>
-                                        <h3 className="font-bold text-lg">Kill Switch</h3>
+                                        <button
+                                            onClick={() => handleManageAction('status', 'PUT', { status: isPaused ? 'active' : 'closed' })}
+                                            disabled={managing || !manageCompId}
+                                            className={`w-full py-3 px-4 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                isPaused 
+                                                    ? 'bg-green-950/50 hover:bg-green-900/50 border border-green-900/50 text-green-400' 
+                                                    : 'bg-red-950/50 hover:bg-red-900/50 border border-red-900/50 text-red-400'
+                                            }`}
+                                        >
+                                            <Power className="w-4 h-4" />
+                                            {isPaused ? 'Resume Trading' : 'Pause Trading'}
+                                        </button>
                                     </div>
-                                    <p className="text-sm text-gray-400">Instantly halt all trading for an active competition.</p>
-                                </div>
-                                <button
-                                    onClick={() => handleManageAction('status', 'POST', { status: 'closed' })}
-                                    disabled={managing || !manageCompId}
-                                    className="w-full py-3 px-4 rounded-xl bg-red-950/50 hover:bg-red-900/50 border border-red-900/50 text-red-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <Power className="w-4 h-4" />
-                                    Pause Trading
-                                </button>
-                            </div>
+                                );
+                            })()}
 
                             {/* resolve mkts card */}
                             <div className="p-6 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col justify-between">
@@ -186,13 +209,13 @@ function Admin({ user }: AdminProps) {
                                 <button
                                     onClick={() => {
                                         const teams = winningTeams.split(',').map(t => t.trim()).filter(Boolean);
-                                        if (teams.length !== 2) {
-                                            setManageMsg({ text: "Must provide exactly 2 winning teams separated by a comma.", type: "error" });
+                                        if (teams.length < 1) {
+                                            setManageMsg({ text: "Must provide at least 1 winning team.", type: "error" });
                                             return;
                                         }
                                         handleManageAction('resolve', 'POST', { winningTeamIds: teams })
                                     }}
-                                    disabled={managing || !manageCompId || !winningTeams}
+                                    disabled={managing || !manageCompId}
                                     className="w-full py-3 px-4 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/50 border border-emerald-900/50 text-emerald-400 font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <DollarSign className="w-4 h-4" />
@@ -246,8 +269,12 @@ function Admin({ user }: AdminProps) {
                             formData.append("file", file);
 
                             try {
-                                const res = await fetch("http://localhost:8080/api/v1/admin/competitions", {
+                                const token = await user?.getIdToken();
+                                const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/admin/competitions`, {
                                     method: "POST",
+                                    headers: {
+                                        'Authorization': `Bearer ${token}`
+                                    },
                                     body: formData
                                 });
                                 const data = await res.json();

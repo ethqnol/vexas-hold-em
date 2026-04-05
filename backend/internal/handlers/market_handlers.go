@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"log"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	"github.com/gofiber/fiber/v2"
@@ -10,14 +11,16 @@ import (
 	"github.com/vexas-hold-em/backend/internal/models"
 )
 
-// get all team markets for a comp
 func GetMarketsByCompetition(c *fiber.Ctx) error {
 	compID := c.Params("id")
 	if db.Client == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database not initialized"})
 	}
 
-	docs, err := db.Client.Collection("competitions").Doc(compID).Collection("markets").Documents(context.Background()).GetAll()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	docs, err := db.Client.Collection("competitions").Doc(compID).Collection("markets").Documents(ctx).GetAll()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch markets"})
 	}
@@ -26,7 +29,6 @@ func GetMarketsByCompetition(c *fiber.Ctx) error {
 	for _, doc := range docs {
 		var market models.Market
 		if err := doc.DataTo(&market); err == nil {
-			// cpmm implied prob: yes% = nopool / (yespool + nopool)
 			yesOdds := 0.5
 			if total := market.YesPool + market.NoPool; total > 0 {
 				yesOdds = market.NoPool / total
@@ -45,7 +47,6 @@ func GetMarketsByCompetition(c *fiber.Ctx) error {
 	})
 }
 
-// gets odds history for specific mkt (for chart)
 func GetMarketHistory(c *fiber.Ctx) error {
 	compID := c.Params("id")
 	marketID := c.Params("marketId")
@@ -53,10 +54,13 @@ func GetMarketHistory(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "db not initialized"})
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	docs, err := db.Client.Collection("competitions").Doc(compID).
 		Collection("ledger").
 		OrderBy("timestamp", firestore.Asc).
-		Documents(context.Background()).GetAll()
+		Documents(ctx).GetAll()
 	if err != nil {
 		log.Printf("Error fetching history: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch history"})
@@ -93,10 +97,13 @@ func GetCompetitionHistory(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "db not initialized"})
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	docs, err := db.Client.Collection("competitions").Doc(compID).
 		Collection("ledger").
 		OrderBy("timestamp", firestore.Asc).
-		Documents(context.Background()).GetAll()
+		Documents(ctx).GetAll()
 	if err != nil {
 		log.Printf("Error fetching global history: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch global history"})

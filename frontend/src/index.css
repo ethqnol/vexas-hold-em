@@ -2,6 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── themes ──────────────────────────────────────────────────────────────── */
+
+/* windows xp mode — luna baby blue */
+body.theme_industrial { background: linear-gradient(180deg, #1b5c9c 0%, #0a2f5a 100%) !important; color-scheme: dark; }
+.theme_industrial .min-h-screen { background: transparent !important; }
+.theme_industrial .bg-gray-950 { background-color: #0c2347 !important; }
+.theme_industrial .bg-gray-900 { background-color: #143870 !important; }
+.theme_industrial .bg-gray-800 { background-color: #1a4d8f !important; }
+.theme_industrial .border-gray-800 { border-color: #2060b0 !important; }
+.theme_industrial .text-blue-500,
+.theme_industrial .bg-gradient-to-r { color: #7ec8f5 !important; }
+.theme_industrial header { background-color: rgba(10, 47, 90, 0.85) !important; border-color: #2060b0 !important; }
+
+/* baller mode — dripping gold */
+body.theme_gold { background: linear-gradient(135deg, #1a1000 0%, #2d1c00 50%, #1a1000 100%) !important; color-scheme: dark; }
+.theme_gold .min-h-screen { background: transparent !important; }
+.theme_gold .bg-gray-950 { background-color: #110b00 !important; }
+.theme_gold .bg-gray-900 { background-color: #1e1400 !important; }
+.theme_gold .bg-gray-800 { background-color: #2a1c00 !important; }
+.theme_gold .border-gray-800 { border-color: #4a3200 !important; }
+.theme_gold .text-blue-500 { color: #d4a017 !important; }
+.theme_gold header { background-color: rgba(26, 16, 0, 0.9) !important; border-color: #4a3200 !important; }
+.theme_gold .bg-blue-600 { background-color: #b8860b !important; }
+
+/* seizure mode — fuchsia nightmare */
+@keyframes seizure {
+  0% { filter: hue-rotate(0deg) contrast(1); background-color: #ff0000 !important; }
+  10% { background-color: #00ff00 !important; }
+  20% { background-color: #0000ff !important; }
+  30% { background-color: #ffff00 !important; }
+  40% { background-color: #ff00ff !important; }
+  50% { filter: hue-rotate(180deg) contrast(2); background-color: #00ffff !important; }
+  60% { background-color: #ffffff !important; }
+  70% { background-color: #ff8800 !important; }
+  80% { background-color: #8800ff !important; }
+  90% { background-color: #000000 !important; }
+  100% { filter: hue-rotate(360deg) contrast(1); background-color: #ff0000 !important; }
+}
+body.theme_neon { 
+  background: linear-gradient(135deg, #1a0030 0%, #00001a 50%, #300010 100%) !important; 
+  color-scheme: dark; 
+  animation: seizure 0.1s infinite linear;
+}
+.theme_neon .min-h-screen { background: transparent !important; }
+.theme_neon .bg-gray-950 { background-color: #0c0018 !important; }
+.theme_neon .bg-gray-900 { background-color: #16002e !important; }
+.theme_neon .bg-gray-800 { background-color: #20003f !important; }
+.theme_neon .border-gray-800 { border-color: #5500aa !important; }
+.theme_neon .text-blue-500 { color: #ff00ff !important; }
+.theme_neon header { background-color: rgba(22, 0, 46, 0.9) !important; border-color: #5500aa !important; }
+.theme_neon .bg-blue-600 { background-color: #9900cc !important; }
+.theme_neon .bg-gradient-to-r { background-image: linear-gradient(to right, #ff00ff, #00ffff) !important; }
+
+/* vomit green — state champs bathroom floor */
+body.theme_vomit { background: linear-gradient(135deg, #0a1a00 0%, #111800 50%, #0d1500 100%) !important; color-scheme: dark; }
+.theme_vomit .min-h-screen { background: transparent !important; }
+.theme_vomit .bg-gray-950 { background-color: #080e00 !important; }
+.theme_vomit .bg-gray-900 { background-color: #101500 !important; }
+.theme_vomit .bg-gray-800 { background-color: #182000 !important; }
+.theme_vomit .border-gray-800 { border-color: #2a3a00 !important; }
+.theme_vomit .text-blue-500 { color: #8fbc00 !important; }
+.theme_vomit header { background-color: rgba(16, 21, 0, 0.9) !important; border-color: #2a3a00 !important; }
+.theme_vomit .bg-blue-600 { background-color: #4d7000 !important; }
+
+
 @layer base {
   body {
     background-color: #111;

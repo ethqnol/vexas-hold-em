@@ -16,7 +16,7 @@ function Health() {
         setStatus('checking');
         const start = performance.now();
         try {
-            const response = await fetch('http://localhost:8080/health');
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/health`);
             if (response.ok) {
                 setStatus('healthy');
                 setLatency(Math.round(performance.now() - start));
