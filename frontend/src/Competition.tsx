@@ -78,9 +78,20 @@ function Competition() {
                     if (res.ok) {
                         const data = await res.json();
                         const points = data.history || [];
-                        // Initialize each market to its actual current odds (= initial odds for untouched markets)
+                        const sortedPoints = [...points].sort((a, b) => a.t - b.t);
+
+                        // Only seed the padding point with odds for markets that have no history.
+                        // For those markets, current odds = initial odds, so the flat line is correct.
+                        // Markets with history must NOT be pre-seeded — their value before their
+                        // first trade is unknown here, and seeding with current odds would show the
+                        // chart starting at the final value and replaying backwards.
+                        const marketIdsWithHistory = new Set(sortedPoints.map(pt => pt.teamId));
                         const teamOdds: Record<string, number> = {};
-                        loadedMarkets.forEach(m => teamOdds[m.id] = m.yesOdds);
+                        loadedMarkets.forEach(m => {
+                            if (!marketIdsWithHistory.has(m.id)) {
+                                teamOdds[m.id] = m.yesOdds;
+                            }
+                        });
 
                         const chart: any[] = [];
 
@@ -89,8 +100,6 @@ function Competition() {
                             ? points[0].t - Math.max(60000, (now - points[0].t) * 0.10)
                             : now - 60000;
                         chart.push({ t: minTime, ...teamOdds });
-
-                        const sortedPoints = [...points].sort((a, b) => a.t - b.t);
 
                         for (const pt of sortedPoints) {
                             teamOdds[pt.teamId] = pt.y;
