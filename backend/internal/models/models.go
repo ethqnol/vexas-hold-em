@@ -31,6 +31,7 @@ type Market struct {
 	Location     string  `firestore:"location" json:"location"`
 	YesPool      float64 `firestore:"yesPool" json:"yesPool"`
 	NoPool       float64 `firestore:"noPool" json:"noPool"`
+	Reserve      float64 `firestore:"reserve" json:"reserve"`
 }
 
 type Transaction struct {

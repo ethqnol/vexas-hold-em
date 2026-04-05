@@ -119,6 +119,7 @@ func PlaceTrade(c *fiber.Ctx) error {
 		if err := tx.Update(marketRef, []firestore.Update{
 			{Path: "yesPool", Value: newYesPool},
 			{Path: "noPool", Value: newNoPool},
+			{Path: "reserve", Value: firestore.Increment(req.Amount)},
 		}); err != nil {
 			return err
 		}
@@ -273,6 +274,7 @@ func SellShares(c *fiber.Ctx) error {
 		if err := tx.Update(marketRef, []firestore.Update{
 			{Path: "yesPool", Value: newYesPool},
 			{Path: "noPool", Value: newNoPool},
+			{Path: "reserve", Value: firestore.Increment(-payout)},
 		}); err != nil {
 			return err
 		}

@@ -125,6 +125,7 @@ func CreateCompetition(c *fiber.Ctx) error {
 			Location:     location,
 			YesPool:      100.0,
 			NoPool:       100.0,
+			Reserve:      200.0,
 		})
 	}
 
@@ -239,6 +240,14 @@ func ResolveCompetition(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch positions"})
 	}
 
+	// Group winning shares by market so we can look up each market's reserve.
+	type marketWin struct {
+		totalShares float64
+		userShares  map[string]float64
+		userRefs    map[string]*firestore.DocumentRef
+	}
+	mktWins := make(map[string]*marketWin)
+
 	batch := db.Client.Batch()
 	opsCount := 0
 
@@ -253,31 +262,84 @@ func ResolveCompetition(c *fiber.Ctx) error {
 		return nil
 	}
 
-	userWinnings := make(map[string]float64)
-	userRefs := make(map[string]*firestore.DocumentRef)
-
 	for _, posDoc := range positionDocs {
 		userRef := posDoc.Ref.Parent.Parent
 		userID := userRef.ID
-		userRefs[userID] = userRef
-
 		teamID := posDoc.Ref.ID
+
 		var pos models.Position
 		if err := posDoc.DataTo(&pos); err != nil {
+			batch.Delete(posDoc.Ref)
+			opsCount++
+			_ = commitIfFull()
 			continue
 		}
 
 		isWinner := winners[teamID]
-		if isWinner && pos.YesShares > 0 {
-			userWinnings[userID] += pos.YesShares
-		} else if !isWinner && pos.NoShares > 0 {
-			userWinnings[userID] += pos.NoShares
+		var winShares float64
+		if isWinner {
+			winShares = pos.YesShares
+		} else {
+			winShares = pos.NoShares
+		}
+
+		if winShares > 0 {
+			if mktWins[teamID] == nil {
+				mktWins[teamID] = &marketWin{
+					userShares: make(map[string]float64),
+					userRefs:   make(map[string]*firestore.DocumentRef),
+				}
+			}
+			mktWins[teamID].totalShares += winShares
+			mktWins[teamID].userShares[userID] += winShares
+			mktWins[teamID].userRefs[userID] = userRef
 		}
 
 		batch.Delete(posDoc.Ref)
 		opsCount++
 		if err := commitIfFull(); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to commit position deletion"})
+		}
+	}
+
+	// For each winning market, fetch its reserve and compute the per-share payout.
+	// Each share pays $1 from the reserve; the reserve is always sufficient because
+	// every dollar bet was deposited into it, and CPMM slippage ensures the reserve
+	// accumulates at least as many dollars as shares were issued.
+	userWinnings := make(map[string]float64)
+	userRefs := make(map[string]*firestore.DocumentRef)
+
+	for teamID, mw := range mktWins {
+		mktRef := db.Client.Collection("competitions").Doc(id).Collection("markets").Doc(teamID)
+		mktDoc, err := mktRef.Get(ctx)
+		if err != nil {
+			log.Printf("ResolveCompetition: failed to fetch market %s: %v", teamID, err)
+			continue
+		}
+		var market models.Market
+		if err := mktDoc.DataTo(&market); err != nil {
+			continue
+		}
+
+		payoutPerShare := 1.0
+		if market.Reserve < mw.totalShares {
+			// Should not happen under normal operation; pay proportionally if it does.
+			log.Printf("ResolveCompetition: reserve insufficient for market %s (reserve=%.6f, shares=%.6f)", teamID, market.Reserve, mw.totalShares)
+			payoutPerShare = market.Reserve / mw.totalShares
+		}
+
+		marketPayout := mw.totalShares * payoutPerShare
+		batch.Update(mktRef, []firestore.Update{
+			{Path: "reserve", Value: firestore.Increment(-marketPayout)},
+		})
+		opsCount++
+		if err := commitIfFull(); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to deduct from market reserve"})
+		}
+
+		for userID, shares := range mw.userShares {
+			userWinnings[userID] += shares * payoutPerShare
+			userRefs[userID] = mw.userRefs[userID]
 		}
 	}
 
@@ -390,6 +452,7 @@ func ResetCompetition(c *fiber.Ctx) error {
 		batch.Update(doc.Ref, []firestore.Update{
 			{Path: "yesPool", Value: 100.0},
 			{Path: "noPool", Value: 100.0},
+			{Path: "reserve", Value: 200.0},
 		})
 		opsCount++
 		if err := commitIfFull(); err != nil {
