@@ -29,6 +29,47 @@ type SellRequest struct {
 	Shares        float64 `json:"shares"`
 }
 
+// buyShares computes how many contracts are received when spending amount dollars
+// against a pool where ownPool is the pool being bought into and otherPool is fixed.
+//
+// Derivation: price = ownPool/(ownPool+otherPool) rises as ownPool grows.
+// Integrating dc = (ownPool+otherPool+x)/(ownPool+x) dx from 0 to amount gives:
+//
+//	shares = amount + otherPool * ln((ownPool + amount) / ownPool)
+func buyShares(amount, ownPool, otherPool float64) float64 {
+	return amount + otherPool*math.Log((ownPool+amount)/ownPool)
+}
+
+// solveSellPayout finds the dollar payout X for selling `shares` contracts
+// when the relevant pool is ownPool and the other pool is otherPool.
+//
+// We solve: shares = X + otherPool * ln(ownPool / (ownPool - X))
+// using Newton's method (typically converges in <5 iterations).
+func solveSellPayout(shares, ownPool, otherPool float64) float64 {
+	// Initial guess: shares × current price
+	X := shares * ownPool / (ownPool + otherPool)
+	for i := 0; i < 20; i++ {
+		remaining := ownPool - X
+		if remaining <= 1e-9 {
+			return ownPool * (1 - 1e-9)
+		}
+		f := X + otherPool*math.Log(ownPool/remaining) - shares
+		df := 1.0 + otherPool/remaining
+		delta := f / df
+		X -= delta
+		if math.Abs(delta) < 1e-10 {
+			break
+		}
+	}
+	if X < 0 {
+		X = 0
+	}
+	if X >= ownPool {
+		X = ownPool * (1 - 1e-9)
+	}
+	return X
+}
+
 func PlaceTrade(c *fiber.Ctx) error {
 	if db.Client == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "db not initialized"})
@@ -84,20 +125,20 @@ func PlaceTrade(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusBadRequest, "insufficient balance")
 		}
 
-		// CPMM math: maintain constant product k = yesPool * noPool
+		// Pricing: price = ownPool / (yesPool + noPool)
+		// Only the purchased pool grows; the other is unchanged.
 		yesPool := market.YesPool
 		noPool := market.NoPool
-		k := yesPool * noPool
 
 		var sharesInside, newYesPoolInside, newNoPoolInside float64
 		if req.TradeType == "YES" {
-			newNoPoolInside = noPool + req.Amount
-			newYesPoolInside = k / newNoPoolInside
-			sharesInside = yesPool - newYesPoolInside
-		} else {
+			sharesInside = buyShares(req.Amount, yesPool, noPool)
 			newYesPoolInside = yesPool + req.Amount
-			newNoPoolInside = k / newYesPoolInside
-			sharesInside = noPool - newNoPoolInside
+			newNoPoolInside = noPool
+		} else {
+			sharesInside = buyShares(req.Amount, noPool, yesPool)
+			newNoPoolInside = noPool + req.Amount
+			newYesPoolInside = yesPool
 		}
 
 		sharesInside = math.Round(sharesInside*1e6) / 1e6
@@ -105,7 +146,7 @@ func PlaceTrade(c *fiber.Ctx) error {
 		if sharesInside <= 0 {
 			return fiber.NewError(fiber.StatusBadRequest, "trade too small to produce shares")
 		}
-		
+
 		shares = sharesInside
 		newYesPool = newYesPoolInside
 		newNoPool = newNoPoolInside
@@ -147,7 +188,7 @@ func PlaceTrade(c *fiber.Ctx) error {
 				TradeType:    req.TradeType,
 				AmountSpent:  req.Amount,
 				SharesBought: shares,
-				YesOdds:      newNoPool / (newYesPool + newNoPool),
+				YesOdds:      newYesPool / (newYesPool + newNoPool),
 			},
 		); err != nil {
 			return err
@@ -244,20 +285,21 @@ func SellShares(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusBadRequest, "not enough shares to sell")
 		}
 
-		// Return shares to pool, extract VEX
+		// Selling is the exact inverse of buying: extract dollars from the pool
+		// such that the price integral reverses. Newton solver finds payout X where:
+		//   shares = X + otherPool * ln(ownPool / (ownPool - X))
 		yesPool := market.YesPool
 		noPool := market.NoPool
-		k := yesPool * noPool
 
 		var payoutInside, newYesPoolInside, newNoPoolInside float64
 		if req.TradeType == "YES" {
-			newYesPoolInside = yesPool + req.Shares
-			newNoPoolInside = k / newYesPoolInside
-			payoutInside = noPool - newNoPoolInside
+			payoutInside = solveSellPayout(req.Shares, yesPool, noPool)
+			newYesPoolInside = yesPool - payoutInside
+			newNoPoolInside = noPool
 		} else {
-			newNoPoolInside = noPool + req.Shares
-			newYesPoolInside = k / newNoPoolInside
-			payoutInside = yesPool - newYesPoolInside
+			payoutInside = solveSellPayout(req.Shares, noPool, yesPool)
+			newNoPoolInside = noPool - payoutInside
+			newYesPoolInside = yesPool
 		}
 
 		payoutInside = math.Round(payoutInside*1e6) / 1e6
@@ -265,12 +307,11 @@ func SellShares(c *fiber.Ctx) error {
 		if payoutInside <= 0 {
 			return fiber.NewError(fiber.StatusBadRequest, "sell too small to produce payout")
 		}
-		
+
 		payout = payoutInside
 		newYesPool = newYesPoolInside
 		newNoPool = newNoPoolInside
 
-		// update docs
 		if err := tx.Update(marketRef, []firestore.Update{
 			{Path: "yesPool", Value: newYesPool},
 			{Path: "noPool", Value: newNoPool},
@@ -302,7 +343,7 @@ func SellShares(c *fiber.Ctx) error {
 				TradeType:    "SELL_" + req.TradeType,
 				AmountSpent:  -payout,
 				SharesBought: -req.Shares,
-				YesOdds:      newNoPool / (newYesPool + newNoPool),
+				YesOdds:      newYesPool / (newYesPool + newNoPool),
 			},
 		); err != nil {
 			return err

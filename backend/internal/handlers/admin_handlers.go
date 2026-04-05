@@ -123,14 +123,26 @@ func CreateCompetition(c *fiber.Ctx) error {
 			Division:     division,
 			Organization: organization,
 			Location:     location,
-			YesPool:      100.0,
-			NoPool:       100.0,
-			Reserve:      0.0,
 		})
 	}
 
 	if len(markets) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "No teams found in XLS file"})
+	}
+
+	// Initial YES probability = 2/numTeams so that the sum of all YES prices = 2
+	// (a reasonable prior for a single-winner competition where top teams are favoured).
+	// Pool sum = 1000; yesPool = 1000 * p, noPool = 1000 * (1-p).
+	numTeams := len(markets)
+	yesFrac := 2.0 / float64(numTeams)
+	if yesFrac > 0.999 {
+		yesFrac = 0.999
+	}
+	initialYesPool := 1000.0 * yesFrac
+	initialNoPool := 1000.0 - initialYesPool
+	for i := range markets {
+		markets[i].YesPool = initialYesPool
+		markets[i].NoPool = initialNoPool
 	}
 
 	// Create the competition doc; returns an error if it already exists.
@@ -445,10 +457,18 @@ func ResetCompetition(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch markets"})
 	}
 
+	numTeams := len(markets)
+	yesFrac := 2.0 / float64(numTeams)
+	if yesFrac > 0.999 {
+		yesFrac = 0.999
+	}
+	resetYesPool := 1000.0 * yesFrac
+	resetNoPool := 1000.0 - resetYesPool
+
 	for _, doc := range markets {
 		batch.Update(doc.Ref, []firestore.Update{
-			{Path: "yesPool", Value: 100.0},
-			{Path: "noPool", Value: 100.0},
+			{Path: "yesPool", Value: resetYesPool},
+			{Path: "noPool", Value: resetNoPool},
 			{Path: "reserve", Value: 0.0},
 		})
 		opsCount++

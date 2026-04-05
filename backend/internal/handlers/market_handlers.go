@@ -31,7 +31,7 @@ func GetMarketsByCompetition(c *fiber.Ctx) error {
 		if err := doc.DataTo(&market); err == nil {
 			yesOdds := 0.5
 			if total := market.YesPool + market.NoPool; total > 0 {
-				yesOdds = market.NoPool / total
+				yesOdds = market.YesPool / total
 			}
 			markets = append(markets, fiber.Map{
 				"id":      doc.Ref.ID,
