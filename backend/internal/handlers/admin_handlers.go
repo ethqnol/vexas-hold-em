@@ -138,8 +138,8 @@ func CreateCompetition(c *fiber.Ctx) error {
 	if yesFrac > 0.999 {
 		yesFrac = 0.999
 	}
-	initialYesPool := 1000.0 * yesFrac
-	initialNoPool := 1000.0 - initialYesPool
+	initialYesPool := 500.0 * yesFrac
+	initialNoPool := 500.0 - initialYesPool
 	for i := range markets {
 		markets[i].YesPool = initialYesPool
 		markets[i].NoPool = initialNoPool
@@ -462,8 +462,8 @@ func ResetCompetition(c *fiber.Ctx) error {
 	if yesFrac > 0.999 {
 		yesFrac = 0.999
 	}
-	resetYesPool := 1000.0 * yesFrac
-	resetNoPool := 1000.0 - resetYesPool
+	resetYesPool := 500.0 * yesFrac
+	resetNoPool := 500.0 - resetYesPool
 
 	for _, doc := range markets {
 		batch.Update(doc.Ref, []firestore.Update{

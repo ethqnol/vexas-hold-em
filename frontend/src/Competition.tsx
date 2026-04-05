@@ -78,30 +78,25 @@ function Competition() {
                     if (res.ok) {
                         const data = await res.json();
                         const points = data.history || [];
+                        // Initialize each market to its actual current odds (= initial odds for untouched markets)
                         const teamOdds: Record<string, number> = {};
-                        loadedMarkets.forEach(m => teamOdds[m.id] = 0.5);
+                        loadedMarkets.forEach(m => teamOdds[m.id] = m.yesOdds);
 
                         const chart: any[] = [];
-                        
-                        // Dynamically pad the left side so that the 0.5 baseline flattens out visually 
+
                         const now = Date.now();
-                        const minTime = points.length > 0 
-                            ? points[0].t - Math.max(60000, (now - points[0].t) * 0.10) 
+                        const minTime = points.length > 0
+                            ? points[0].t - Math.max(60000, (now - points[0].t) * 0.10)
                             : now - 60000;
                         chart.push({ t: minTime, ...teamOdds });
 
-                        // Sort points chronologically
                         const sortedPoints = [...points].sort((a, b) => a.t - b.t);
 
                         for (const pt of sortedPoints) {
                             teamOdds[pt.teamId] = pt.y;
-                            chart.push({
-                                t: pt.t,
-                                ...teamOdds
-                            });
+                            chart.push({ t: pt.t, ...teamOdds });
                         }
-                        
-                        // Append trailing point to stretch the graph to the right edge at the current time
+
                         chart.push({ t: Date.now(), ...teamOdds });
 
                         setGlobalHistory(chart);
@@ -255,16 +250,32 @@ function Competition() {
                 ) : (
                     <div className="h-72 pt-4 pb-2 pr-[20%] border border-white/[0.04] rounded-xl bg-[#161616]">
                         <ResponsiveContainer width="100%" height="100%">
+                            {(() => {
+                                // Compute Y domain from actual data so the chart fills the viewport
+                                const allVals = globalHistory.flatMap(pt =>
+                                    markets.map(m => pt[m.id] as number).filter(v => v != null)
+                                );
+                                const dataMin = allVals.length ? Math.min(...allVals) : 0;
+                                const dataMax = allVals.length ? Math.max(...allVals) : 1;
+                                const pad = Math.max((dataMax - dataMin) * 0.15, 0.02);
+                                const yMin = Math.max(0, dataMin - pad);
+                                const yMax = Math.min(1, dataMax + pad);
+                                const step = (yMax - yMin) <= 0.15 ? 0.05 : (yMax - yMin) <= 0.4 ? 0.1 : 0.25;
+                                const ticks: number[] = [];
+                                const start = Math.ceil(yMin / step) * step;
+                                for (let t = start; t <= yMax + 1e-9; t = Math.round((t + step) * 1e6) / 1e6) ticks.push(t);
+
+                                return (
                             <LineChart data={globalHistory} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
-                                <XAxis 
-                                    dataKey="t" 
-                                    type="number" 
-                                    domain={['dataMin', 'dataMax']} 
-                                    hide 
+                                <XAxis
+                                    dataKey="t"
+                                    type="number"
+                                    domain={['dataMin', 'dataMax']}
+                                    hide
                                 />
                                 <YAxis
-                                    domain={[0, 1]}
-                                    ticks={[0, 0.25, 0.5, 0.75, 1]}
+                                    domain={[yMin, yMax]}
+                                    ticks={ticks}
                                     tickFormatter={v => `${Math.round(v * 100)}%`}
                                     tick={{ fontSize: 10, fill: '#4b5563' }}
                                     width={40}
@@ -294,15 +305,14 @@ function Competition() {
                                         );
                                     }}
                                 />
-                                <ReferenceLine y={0.5} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
                                 {markets.map((m, i) => (
                                     <Line
                                         key={m.id}
-                                        type="stepAfter"
+                                        type="monotone"
                                         dataKey={m.id}
                                         stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                                        strokeWidth={hoveredLine === m.id ? 3 : 2}
-                                        strokeOpacity={hoveredLine && hoveredLine !== m.id ? 0.2 : 1}
+                                        strokeWidth={hoveredLine === m.id ? 2.5 : 1.5}
+                                        strokeOpacity={hoveredLine && hoveredLine !== m.id ? 0.15 : 0.9}
                                         dot={false}
                                         activeDot={{ r: 4 }}
                                         isAnimationActive={false}
@@ -311,6 +321,8 @@ function Competition() {
                                     />
                                 ))}
                             </LineChart>
+                                );
+                            })()}
                         </ResponsiveContainer>
                     </div>
                 )}
@@ -419,25 +431,35 @@ function Competition() {
                                             ? sortedHistory[0].t - Math.max(60000, (endT - sortedHistory[0].t) * 0.10)
                                             : endT - 60000;
 
-                                        const singleChartData = sortedHistory.length === 0 
-                                            ? [] 
+                                        const singleChartData = sortedHistory.length === 0
+                                            ? []
                                             : [
-                                                { t: startT, y: 0.5 },
                                                 ...sortedHistory,
                                                 { ...sortedHistory[sortedHistory.length - 1], t: endT }
                                             ];
 
+                                        const yVals = singleChartData.map(p => p.y);
+                                        const dMin = yVals.length ? Math.min(...yVals) : 0;
+                                        const dMax = yVals.length ? Math.max(...yVals) : 1;
+                                        const pad = Math.max((dMax - dMin) * 0.2, 0.03);
+                                        const yMin = Math.max(0, dMin - pad);
+                                        const yMax = Math.min(1, dMax + pad);
+                                        const step = (yMax - yMin) <= 0.15 ? 0.05 : (yMax - yMin) <= 0.4 ? 0.1 : 0.25;
+                                        const ticks: number[] = [];
+                                        const tickStart = Math.ceil(yMin / step) * step;
+                                        for (let t = tickStart; t <= yMax + 1e-9; t = Math.round((t + step) * 1e6) / 1e6) ticks.push(t);
+
                                         return (
-                                            <LineChart data={singleChartData} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
-                                                <XAxis 
-                                                    dataKey="t" 
-                                                    type="number" 
-                                                    domain={['dataMin', 'dataMax']} 
-                                                    hide 
+                                            <LineChart data={singleChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                                                <XAxis
+                                                    dataKey="t"
+                                                    type="number"
+                                                    domain={['dataMin', 'dataMax']}
+                                                    hide
                                                 />
                                                 <YAxis
-                                                    domain={[0, 1]}
-                                                    ticks={[0, 0.25, 0.5, 0.75, 1]}
+                                                    domain={[yMin, yMax]}
+                                                    ticks={ticks}
                                                     tickFormatter={v => `${Math.round(v * 100)}%`}
                                                     tick={{ fontSize: 10, fill: '#4b5563' }}
                                                     width={36}
@@ -450,9 +472,8 @@ function Competition() {
                                                     labelFormatter={() => ''}
                                                     contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 11 }}
                                                 />
-                                                <ReferenceLine y={0.5} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
                                                 <Line
-                                                    type="stepAfter"
+                                                    type="monotone"
                                                     dataKey="y"
                                                     stroke="#3b82f6"
                                                     strokeWidth={2}
